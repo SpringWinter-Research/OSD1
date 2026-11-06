@@ -1,14 +1,47 @@
 ---
 title: OSD1
+description: One SQLite file behind an HTTP API. 111,075 requests per second on an Apple M4.
 ---
 
-{% include nav.html %}
+<div class="poster">
+  <p class="kicker">One file, one thread</p>
+  <h1>The database<br>is a file.</h1>
+  <p class="lede">OSD1 serves that file over HTTP. You send native SQLite SQL. The request shape matches Cloudflare D1, so the official TypeScript client can call it.</p>
+  <ul class="stats">
+    <li><strong>111,075</strong><span>requests/s at 32 clients</span></li>
+    <li><strong>6.5 MB</strong><span>peak resident memory</span></li>
+    <li><strong>0.14–0.17 ms</strong><span>p50, one Python client</span></li>
+  </ul>
+  <p class="actions">
+    <a class="button" href="benchmark.html">See the run</a>
+    <a class="button button-quiet" href="https://github.com/SpringWinter-Research/OSD1">Source</a>
+  </p>
+  {% include scale-chart.html %}
+</div>
 
-# OSD1
+<section class="split">
+  <article>
+    <p class="kicker">OSD1</p>
+    <h2>One writer.</h2>
+    <p>One SQLite file, one connection, one transaction per request, <code>synchronous=FULL</code>. The client already speaks the D1 HTTP API. 111,075 requests/s is where this laptop’s SQL thread filled up.</p>
+  </article>
+  <article>
+    <p class="kicker">Postgres</p>
+    <h2>Many sessions.</h2>
+    <p>Postgres is the server for concurrent sessions, roles, extensions, and its own protocol. Pooling and replication belong to that job. The numbers on this page are the OSD1 run from 6&nbsp;Nov&nbsp;2026.</p>
+  </article>
+</section>
 
-OSD1 is an HTTP server for one SQLite database. You send native SQLite SQL. `/query` and `/raw` follow the Cloudflare D1 REST shape used by the official [`cloudflare`](https://www.npmjs.com/package/cloudflare) TypeScript SDK.
-
-[Source](https://github.com/SpringWinter-Research/OSD1) · [Image](https://gallery.ecr.aws/c5l0h3s1/osd1) · [License: MIT](https://github.com/SpringWinter-Research/OSD1/blob/main/LICENSE)
+<section>
+  <p class="kicker">Same laptop, no HTTP</p>
+  <h2>What the file did alone.</h2>
+  <ul class="stats">
+    <li><strong>543,065</strong><span>WAL transactions/s, synchronous=FULL</span></li>
+    <li><strong>2,516,325</strong><span>in-memory transactions/s</span></li>
+    <li><strong>3,447,361</strong><span>indexed reads/s, one transaction</span></li>
+  </ul>
+  <p class="note">SQLite only, on the same Apple&nbsp;M4. These are not HTTP requests, and Postgres was not part of the run.</p>
+</section>
 
 ## Quick start
 
@@ -126,6 +159,8 @@ Apple M4, 6 Nov 2026, release build, loopback. `SELECT 1` over keep-alive HTTP. 
 On the same machine, SQLite with no HTTP did 2,516,325 in-memory transactions/s, 543,065 WAL transactions/s with `synchronous=FULL`, and 3,447,361 indexed reads/s inside one transaction.
 
 A single Python client against four workloads (2,000 calls each, 4,000 indexed rows loaded):
+
+{% include latency-chart.html %}
 
 | Workload | p50 | p95 | p99 | Requests/s |
 | --- | ---: | ---: | ---: | ---: |

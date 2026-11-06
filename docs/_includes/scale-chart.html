@@ -1,0 +1,26 @@
+<figure class="chart">
+  <figcaption class="kicker">Requests per second</figcaption>
+  <div class="hbars" role="img" aria-label="1 client 25,467. 8 clients 82,129. 16 clients 102,234. 32 clients 111,075.">
+    <div class="hbar">
+      <span class="hbar-label">1 client</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:22.9%"></span></span>
+      <span class="hbar-value">25,467</span>
+    </div>
+    <div class="hbar">
+      <span class="hbar-label">8 clients</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:73.9%"></span></span>
+      <span class="hbar-value">82,129</span>
+    </div>
+    <div class="hbar">
+      <span class="hbar-label">16 clients</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:92%"></span></span>
+      <span class="hbar-value">102,234</span>
+    </div>
+    <div class="hbar">
+      <span class="hbar-label">32 clients</span>
+      <span class="hbar-track"><span class="hbar-fill is-max" style="width:100%"></span></span>
+      <span class="hbar-value">111,075</span>
+    </div>
+  </div>
+  <p class="note">SELECT&nbsp;1 over keep-alive HTTP. Release build, loopback, Apple&nbsp;M4, 6&nbsp;Nov&nbsp;2026. At 32&nbsp;clients the rate flattened: the SQL thread was full.</p>
+</figure>

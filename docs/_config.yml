@@ -2,6 +2,8 @@ title: OSD1
 description: One SQLite database behind an HTTP API.
 theme: jekyll-theme-cayman
 markdown: kramdown
+kramdown:
+  input: GFM
 url: https://springwinter-research.github.io
 baseurl: /OSD1
 plugins:
@@ -9,6 +11,11 @@ plugins:
 relative_links:
   enabled: true
   collections: true
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
 exclude:
   - Gemfile
   - Gemfile.lock

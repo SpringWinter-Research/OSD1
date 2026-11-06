@@ -2,8 +2,6 @@
 title: API examples
 ---
 
-{% include nav.html %}
-
 # API examples
 
 These requests were run against a local `osd1` process started with `OSD1_API_TOKEN=test-token` and `OSD1_HTTP_ADDR=127.0.0.1:8091`.

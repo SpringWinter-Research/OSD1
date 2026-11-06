@@ -1,0 +1,26 @@
+<figure class="chart">
+  <figcaption class="kicker">p99 latency, one Python client</figcaption>
+  <div class="hbars" role="img" aria-label="Read-heavy 0.78 ms. Balanced 0.95 ms. Write-heavy 1.64 ms. Mixed 0.45 ms.">
+    <div class="hbar">
+      <span class="hbar-label">Read-heavy</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:47.6%"></span></span>
+      <span class="hbar-value">0.78 ms</span>
+    </div>
+    <div class="hbar">
+      <span class="hbar-label">Balanced</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:57.9%"></span></span>
+      <span class="hbar-value">0.95 ms</span>
+    </div>
+    <div class="hbar">
+      <span class="hbar-label">Write-heavy</span>
+      <span class="hbar-track"><span class="hbar-fill is-max" style="width:100%"></span></span>
+      <span class="hbar-value">1.64 ms</span>
+    </div>
+    <div class="hbar">
+      <span class="hbar-label">Mixed</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width:27.4%"></span></span>
+      <span class="hbar-value">0.45 ms</span>
+    </div>
+  </div>
+  <p class="note">2,000 calls each, after 4,000 indexed rows were loaded. One client, so this is latency for that client, not the 111,075 ceiling.</p>
+</figure>

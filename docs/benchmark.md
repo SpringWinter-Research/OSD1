@@ -1,8 +1,7 @@
 ---
 title: Benchmark
+description: Recorded OSD1 runs on an Apple M4, 6 Nov 2026.
 ---
-
-{% include nav.html %}
 
 # Benchmark
 
@@ -11,6 +10,10 @@ Apple M4, 6 Nov 2026. The tables are the same runs as the blocks below.
 A release build serving `SELECT 1` over keep-alive HTTP reached 25,467 requests/s with one client and 111,075 requests/s with 32 clients. Eight clients did 82,129/s and 16 clients did 102,234/s. The rate flattened, so the SQL thread was full.
 
 SQLite on the same machine, with no HTTP: 2,516,325 in-memory transactions per second, 543,065 WAL `synchronous=FULL` transactions per second, and 3,447,361 indexed reads per second inside one transaction.
+
+{% include scale-chart.html %}
+
+{% include latency-chart.html %}
 
 The four workloads below used one Python client against the release binary. They are latency for that client, not the 111k ceiling.
 

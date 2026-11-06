@@ -2,8 +2,6 @@
 title: Security scan
 ---
 
-{% include nav.html %}
-
 # Security scan
 
 `./scripts/scan.sh` records dependency advisories and image advisories. A finding does not fail the script. A scanner that does not run does. This page quotes a run from 2026-11-06. The image is not clean.

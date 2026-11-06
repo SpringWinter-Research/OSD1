@@ -2,8 +2,6 @@
 title: Testing
 ---
 
-{% include nav.html %}
-
 # Testing
 
 Three kinds of checks: the SQL and HTTP behavior, the four workloads, and the security controls. A row below is from a run on 6 Nov 2026.

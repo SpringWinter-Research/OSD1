@@ -1,3 +1,9 @@
+---
+title: Testing
+---
+
+{% include nav.html %}
+
 # Testing
 
 OSD1 has three kinds of checks: functional categories, workload profiles, and security controls. A row is claimed only after the command in that row has been run and its output recorded.

@@ -1,3 +1,9 @@
+---
+title: Operations
+---
+
+{% include nav.html %}
+
 # Operations
 
 The image listens on `0.0.0.0:8080` and stores the only database at `/data/osd1.db`. Compose mounts a named volume there and sets `OSD1_API_TOKEN`. The default token is `dev-token` when the variable is unset.

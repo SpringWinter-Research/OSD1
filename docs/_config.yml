@@ -1,0 +1,14 @@
+title: OSD1
+description: One SQLite database behind an HTTP API.
+theme: jekyll-theme-cayman
+markdown: kramdown
+url: https://anuragsarkar97.github.io
+baseurl: /osd1
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: true
+exclude:
+  - Gemfile
+  - Gemfile.lock

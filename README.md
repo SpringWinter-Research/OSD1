@@ -4,7 +4,7 @@ OSD1 is an HTTP server for one SQLite database. Clients send native SQLite SQL. 
 
 One OS thread owns the only SQLite connection and drains a bounded FIFO queue. Each request is one transaction. The process does not keep a client transaction open after the response. Litestream, when used, runs as a sidecar and is not linked into the binary.
 
-License: [MIT](LICENSE).
+License: [MIT](LICENSE). Docs site: <https://anuragsarkar97.github.io/osd1/>.
 
 ## Image
 

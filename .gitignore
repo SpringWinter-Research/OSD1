@@ -1,5 +1,7 @@
 /target
 /data
+docs/_site
+docs/.jekyll-cache
 node_modules
 .env
 *.db

@@ -1,3 +1,9 @@
+---
+title: Compatibility
+---
+
+{% include nav.html %}
+
 # Compatibility with the Cloudflare SDK
 
 Observed with `cloudflare@4.5.0`. `node spike/run-spike.mjs` recorded the request shape. `node spike/sdk-compat.mjs` then called a running `osd1` binary and printed `sdk-compat ok`.

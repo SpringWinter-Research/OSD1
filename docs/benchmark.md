@@ -1,3 +1,9 @@
+---
+title: Benchmark
+---
+
+{% include nav.html %}
+
 # Benchmark
 
 Local process, not the Docker image. Command:

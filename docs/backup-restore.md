@@ -1,3 +1,9 @@
+---
+title: Backup and restore
+---
+
+{% include nav.html %}
+
 # Backup and restore
 
 Litestream runs beside OSD1. It is not linked into the server. The replica is an S3 bucket. The compose backup file points that at [Silo](https://silo.pgsty.com/), an S3-compatible server, so the recovery script can run without a cloud account. Docker Hub no longer serves `minio/minio` or `minio/mc`. The service name stays `minio`, and the endpoint stays `http://minio:9000`.

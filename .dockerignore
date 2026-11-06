@@ -1,0 +1,7 @@
+target
+data
+.git
+spike/node_modules
+*.db
+*.db-wal
+*.db-shm

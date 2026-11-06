@@ -1,0 +1,18 @@
+name: osd1
+
+services:
+  osd1:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      OSD1_API_TOKEN: ${OSD1_API_TOKEN:-dev-token}
+      OSD1_DB_PATH: /data/osd1.db
+      OSD1_HTTP_ADDR: 0.0.0.0:8080
+    volumes:
+      - osd1-data:/data
+
+volumes:
+  osd1-data:

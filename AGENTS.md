@@ -32,7 +32,7 @@ The lead is the only editor of:
 | Protocol | `crates/osd1-http/**` | types, engine, server, deploy |
 | Backup | `deploy/litestream.yml`, `deploy/compose.backup.yml`, `docs/backup-restore.md`, `scripts/recovery.sh` | Rust crates |
 | Operations | `deploy/Dockerfile`, `deploy/compose.yml`, `.dockerignore`, `docs/operations.md` | Rust crates, Litestream files |
-| Testing | `tests/**`, `scripts/bench.sh`, `docs/benchmark.md`, `docs/api-examples.md`, `spike/sdk-compat.mjs` | Production Rust, except tests |
+| Testing | `tests/**`, `crates/osd1-server/tests/**`, `scripts/bench.sh`, `scripts/profiles.sh`, `scripts/persist.sh`, `scripts/recovery-cases.sh`, `scripts/tls-check.sh`, `scripts/scan.sh`, `docs/benchmark.md`, `docs/testing.md`, `docs/security-scan.md`, `docs/api-examples.md`, `spike/sdk-compat.mjs` | Production Rust, except tests |
 
 An agent that needs a new shared type stops and asks the lead. The lead changes `crates/osd1-types` and the agent rebases. Agents do not edit that crate.
 
@@ -49,3 +49,4 @@ An agent that needs a new shared type stops and asks the lead. The lead changes 
 - Docker compose serves `/query` from a volume
 - `scripts/recovery.sh` has been executed before any durability claim
 - `docs/benchmark.md` quotes a real run before any performance claim
+- `docs/testing.md` quotes a real run before claiming the profile, persistence, TLS, recovery, or scan checks

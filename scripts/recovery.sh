@@ -86,6 +86,11 @@ while [ "$i" -lt 30 ]; do
       "http://127.0.0.1:8080/accounts/local/d1/database/osd1/query")
     echo "$body"
     echo "$body" | grep -q "litestream-restore-ok"
+    check=$(curl -fsS -H "Authorization: Bearer $OSD1_API_TOKEN" -H "content-type: application/json" \
+      -d '{"sql":"PRAGMA integrity_check"}' \
+      "http://127.0.0.1:8080/accounts/local/d1/database/osd1/query")
+    echo "$check"
+    echo "$check" | grep -q '"integrity_check":"ok"'
     ok=1
     break
   fi

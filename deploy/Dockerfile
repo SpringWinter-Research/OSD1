@@ -10,6 +10,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 osd1 \
     && mkdir -p /data \
+    && chmod 700 /data \
     && chown osd1:osd1 /data
 COPY --from=build /src/target/release/osd1 /usr/local/bin/osd1
 USER osd1

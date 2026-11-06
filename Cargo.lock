@@ -352,6 +352,7 @@ dependencies = [
  "osd1-engine",
  "osd1-http",
  "osd1-types",
+ "serde_json",
  "tokio",
 ]
 

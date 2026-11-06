@@ -37,3 +37,24 @@ The primary files were then deleted and restored. `SELECT note FROM markers` ret
 ```
 
 The script printed `recovery ok`.
+
+The same script now also sends `PRAGMA integrity_check` and requires `"integrity_check":"ok"`. A later run on 2026-11-06 exited 0. `litestream ltx` printed:
+
+```
+level  min_txid          max_txid          size  created
+0      0000000000000001  0000000000000001  601   2026-11-06T09:30:46Z
+```
+
+`SELECT note FROM markers` returned:
+
+```json
+{"success":true,"errors":[],"messages":[],"result":[{"success":true,"results":[{"note":"litestream-restore-ok"}],"meta":{"changed_db":false,"changes":0,"duration":0.056292,"last_row_id":0,"rows_read":1,"rows_written":0,"served_by_colo":"LOC","served_by_primary":true,"served_by_region":"WNAM","size_after":16384,"timings":{"sql_duration_ms":0.056292}}}]}
+```
+
+`PRAGMA integrity_check` returned:
+
+```json
+{"success":true,"errors":[],"messages":[],"result":[{"success":true,"results":[{"integrity_check":"ok"}],"meta":{"changed_db":false,"changes":0,"duration":0.02175,"last_row_id":0,"rows_read":1,"rows_written":0,"served_by_colo":"LOC","served_by_primary":true,"served_by_region":"WNAM","size_after":16384,"timings":{"sql_duration_ms":0.02175}}}]}
+```
+
+The script printed `recovery ok`.

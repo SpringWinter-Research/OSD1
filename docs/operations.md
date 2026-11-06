@@ -27,4 +27,20 @@ The response had two result elements. The insert element had `changes` 1 and `la
 
 The named volume was `osd1_osd1-data`.
 
-Litestream is not in this file. `deploy/compose.backup.yml` and `scripts/recovery.sh` add MinIO and Litestream.
+`./scripts/persist.sh` repeats that check on the current image: insert `persist-restart-ok`, restart the container, select the row, force-recreate the container, and select it again. It also checks that `/data` is mode `700`, `osd1.db` and `osd1.db-wal` are mode `600`, and that the API token does not appear in the container logs. The script removes the volume on exit.
+
+Unedited result lines from 2026-11-06:
+
+```
+data_dir_mode 700
+db_file_mode 600
+wal_file_mode 600
+token_absent_from_logs yes
+{"success":true,"errors":[],"messages":[],"result":[{"success":true,"results":[{"note":"persist-restart-ok"}],"meta":{"changed_db":false,"changes":0,"duration":0.020208,"last_row_id":0,"rows_read":1,"rows_written":0,"served_by_colo":"LOC","served_by_primary":true,"served_by_region":"WNAM","size_after":4096,"timings":{"sql_duration_ms":0.020208}}}]}
+{"success":true,"errors":[],"messages":[],"result":[{"success":true,"results":[{"note":"persist-restart-ok"}],"meta":{"changed_db":false,"changes":0,"duration":0.057666,"last_row_id":0,"rows_read":1,"rows_written":0,"served_by_colo":"LOC","served_by_primary":true,"served_by_region":"WNAM","size_after":4096,"timings":{"sql_duration_ms":0.057666}}}]}
+persist ok
+```
+
+The first JSON line is after `compose restart`. The second is after `compose up -d --force-recreate`.
+
+Litestream is not in this file. `deploy/compose.backup.yml` and `scripts/recovery.sh` add MinIO and Litestream. TLS for the same image is `./scripts/tls-check.sh`, which terminates TLS at nginx and forwards `Authorization` to OSD1.

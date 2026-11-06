@@ -27,6 +27,9 @@ Observed with `cloudflare@4.5.0`. `node spike/run-spike.mjs` recorded the reques
 - JSON parameters may be null, strings, integers, or finite floats. The SDK sends strings. Booleans, objects, and arrays are HTTP 400.
 - Blob result values are rejected. The SDK compat run did not return a blob.
 - A full queue is HTTP 429 with `x-should-retry: false`, because this SDK retries 429 unless that header is false.
+- A request body larger than `OSD1_MAX_BODY_BYTES` (default 1 MiB) is HTTP 413 before SQL runs.
+- A success envelope larger than `OSD1_MAX_RESPONSE_BYTES` (default 1 MiB) is HTTP 400, code 7500, message `response exceeds the size limit`.
+- Queue wait plus SQL longer than `OSD1_REQUEST_TIMEOUT_MS` (default 30000, `0` waits without a limit) is HTTP 504, code 7500, with `x-should-retry: false`.
 - `GET /health` is an OSD1 route. It is not part of the D1 API.
 
 ## Not exercised

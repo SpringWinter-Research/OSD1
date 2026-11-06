@@ -1,7 +1,9 @@
 //! D1 REST `/query` and `/raw` HTTP adapter.
 
+use std::time::Duration;
+
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -14,10 +16,32 @@ use serde::Serialize;
 use serde_json::Value;
 
 /// `api_token` of `None` leaves `/query` and `/raw` unauthenticated.
+///
+/// `max_body_bytes` is enforced before SQL is queued. `max_response_bytes` rejects
+/// a success envelope that would be larger than the limit. `request_timeout` covers
+/// queue wait and SQL. `None` waits until the worker replies.
 #[derive(Clone)]
 pub struct AppState {
     pub executor: std::sync::Arc<dyn osd1_types::SqlExecutor>,
     pub api_token: Option<String>,
+    pub max_body_bytes: usize,
+    pub max_response_bytes: usize,
+    pub request_timeout: Option<Duration>,
+}
+
+impl AppState {
+    pub fn new(
+        executor: std::sync::Arc<dyn osd1_types::SqlExecutor>,
+        api_token: Option<String>,
+    ) -> Self {
+        Self {
+            executor,
+            api_token,
+            max_body_bytes: 1024 * 1024,
+            max_response_bytes: 1024 * 1024,
+            request_timeout: Some(Duration::from_secs(30)),
+        }
+    }
 }
 
 /// Routes `GET /health`, `POST /accounts/{account_id}/d1/database/{database_id}/query`,
@@ -25,6 +49,7 @@ pub struct AppState {
 ///
 /// `/health` does not enqueue. Path ids are ignored.
 pub fn router(state: AppState) -> Router {
+    let max_body_bytes = state.max_body_bytes;
     Router::new()
         .route("/health", get(health))
         .route(
@@ -35,6 +60,7 @@ pub fn router(state: AppState) -> Router {
             "/accounts/{account_id}/d1/database/{database_id}/raw",
             post(raw),
         )
+        .layer(DefaultBodyLimit::max(max_body_bytes))
         .with_state(state)
 }
 
@@ -74,16 +100,53 @@ async fn handle(
         Err(response) => return *response,
     };
     match state.executor.enqueue(request) {
-        EnqueueResult::Accepted(receiver) => match receiver.await {
-            Ok(Ok(response)) => json_response(StatusCode::OK, success_body(&response, shape)),
+        EnqueueResult::Accepted(receiver) => wait_for_sql(state, receiver, shape).await,
+        EnqueueResult::Full => queue_full(),
+        EnqueueResult::Closed => shut_down(),
+    }
+}
+
+async fn wait_for_sql(
+    state: &AppState,
+    receiver: tokio::sync::oneshot::Receiver<Result<SqlResponse, SqlError>>,
+    shape: ResultShape,
+) -> Response {
+    let pending = async {
+        match receiver.await {
+            Ok(Ok(response)) => limited_success(state, &response, shape),
             Ok(Err(SqlError::ShuttingDown)) => shut_down(),
             Ok(Err(error)) => fail(StatusCode::BAD_REQUEST, ERROR_SQL, error.to_string()),
             // The worker dropped the response channel.
             Err(_recv) => shut_down(),
+        }
+    };
+    match state.request_timeout {
+        Some(limit) => match tokio::time::timeout(limit, pending).await {
+            Ok(response) => response,
+            Err(_elapsed) => request_timed_out(),
         },
-        EnqueueResult::Full => queue_full(),
-        EnqueueResult::Closed => shut_down(),
+        None => pending.await,
     }
+}
+
+fn limited_success(state: &AppState, response: &SqlResponse, shape: ResultShape) -> Response {
+    let bytes = serde_json::to_vec(&success_body(response, shape)).expect("envelope is json");
+    if bytes.len() > state.max_response_bytes {
+        return fail(
+            StatusCode::BAD_REQUEST,
+            ERROR_SQL,
+            "response exceeds the size limit",
+        );
+    }
+    (
+        StatusCode::OK,
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        )],
+        bytes,
+    )
+        .into_response()
 }
 
 fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), Box<Response>> {
@@ -207,6 +270,18 @@ fn shut_down() -> Response {
     )
 }
 
+fn request_timed_out() -> Response {
+    let mut response = fail(
+        StatusCode::GATEWAY_TIMEOUT,
+        ERROR_SQL,
+        "sql request timed out",
+    );
+    response
+        .headers_mut()
+        .insert("x-should-retry", HeaderValue::from_static("false"));
+    response
+}
+
 fn queue_full() -> Response {
     let mut response = fail(
         StatusCode::TOO_MANY_REQUESTS,
@@ -305,6 +380,8 @@ mod tests {
     use serde_json::{json, Value};
     use tower::ServiceExt;
 
+    use std::time::{Duration, Instant};
+
     use super::{router, AppState};
 
     const QUERY: &str = "/accounts/023e105f4ecef8ad9ca31a8372d0c353/d1/database/db-id/query";
@@ -315,6 +392,7 @@ mod tests {
         Full,
         Closed,
         Canceled,
+        Pending,
         Ready(Box<dyn Fn() -> Result<SqlResponse, SqlError> + Send + Sync>),
     }
 
@@ -331,6 +409,11 @@ mod tests {
                 Outcome::Closed => EnqueueResult::Closed,
                 Outcome::Canceled => {
                     let (_sender, receiver) = tokio::sync::oneshot::channel();
+                    EnqueueResult::Accepted(receiver)
+                }
+                Outcome::Pending => {
+                    let (sender, receiver) = tokio::sync::oneshot::channel();
+                    std::mem::forget(sender);
                     EnqueueResult::Accepted(receiver)
                 }
                 Outcome::Ready(respond) => {
@@ -377,10 +460,7 @@ mod tests {
             outcome,
         });
         let executor: Arc<dyn SqlExecutor> = fake.clone();
-        let app = router(AppState {
-            executor,
-            api_token: token.map(str::to_string),
-        });
+        let app = router(AppState::new(executor, token.map(str::to_string)));
         (fake, app)
     }
 
@@ -706,5 +786,76 @@ mod tests {
             assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{label}");
             assert_failure(&body, 7500, "sql worker is shut down");
         }
+    }
+
+    #[tokio::test]
+    async fn oversized_body_is_rejected_before_sql() {
+        let fake = Arc::new(Fake {
+            requests: Mutex::new(Vec::new()),
+            outcome: ready_ok(vec![statement("n", 1)]),
+        });
+        let executor: Arc<dyn SqlExecutor> = fake.clone();
+        let mut state = AppState::new(executor, None);
+        state.max_body_bytes = 64;
+        let app = router(state);
+        let body = format!(r#"{{"sql":"{}"}}"#, "A".repeat(200));
+        let response = app
+            .oneshot(post(QUERY, None, &body))
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn oversized_response_is_rejected() {
+        let big = "x".repeat(4_000);
+        let statement = StatementResult {
+            columns: vec!["v".to_string()],
+            rows: vec![vec![SqlValue::Text(big.clone())]],
+            meta: sample_meta(),
+            success: true,
+        };
+        let fake = Arc::new(Fake {
+            requests: Mutex::new(Vec::new()),
+            outcome: ready_ok(vec![statement]),
+        });
+        let executor: Arc<dyn SqlExecutor> = fake.clone();
+        let mut state = AppState::new(executor, None);
+        state.max_response_bytes = 128;
+        let app = router(state);
+        let response = app
+            .oneshot(post(QUERY, None, r#"{"sql":"SELECT 1"}"#))
+            .await
+            .expect("response");
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let text = String::from_utf8_lossy(&bytes);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(text.contains("response exceeds the size limit"));
+        assert!(!text.contains(&big));
+    }
+
+    #[tokio::test]
+    async fn sql_request_timeout_returns_504() {
+        let fake = Arc::new(Fake {
+            requests: Mutex::new(Vec::new()),
+            outcome: Outcome::Pending,
+        });
+        let executor: Arc<dyn SqlExecutor> = fake.clone();
+        let mut state = AppState::new(executor, None);
+        state.request_timeout = Some(Duration::from_millis(30));
+        let app = router(state);
+        let started = Instant::now();
+        let (status, headers, body) = dispatch(app, post(QUERY, None, r#"{"sql":"SELECT 1"}"#)).await;
+        assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
+        assert_failure(&body, 7500, "sql request timed out");
+        assert_eq!(
+            headers
+                .get("x-should-retry")
+                .and_then(|value| value.to_str().ok()),
+            Some("false")
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }

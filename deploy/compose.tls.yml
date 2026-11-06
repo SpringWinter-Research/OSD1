@@ -1,0 +1,11 @@
+# TLS terminates here. OSD1 itself stays on HTTP inside the compose network.
+services:
+  proxy:
+    image: nginx:1.27-alpine
+    depends_on:
+      - osd1
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${OSD1_TLS_DIR:?set OSD1_TLS_DIR}:/certs:ro

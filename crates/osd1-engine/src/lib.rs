@@ -59,11 +59,7 @@ impl SqliteWorker {
         pause: Option<PauseGate>,
     ) -> Result<Self, rusqlite::Error> {
         let path = path.as_ref().to_path_buf();
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).map_err(open_error)?;
-            }
-        }
+        ensure_private_parent(&path)?;
         let capacity = capacity.max(1);
         let served_by_colo = served_by_colo.into();
         let (tx, rx) = mpsc::sync_channel(capacity);
@@ -114,6 +110,56 @@ impl Drop for SqliteWorker {
     }
 }
 
+/// Create the parent directory at mode 0700 when it does not already exist.
+/// An existing directory is left alone so a path under `/tmp` is not chmod'd.
+fn ensure_private_parent(path: &Path) -> Result<(), rusqlite::Error> {
+    let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) else {
+        return Ok(());
+    };
+    if parent.exists() {
+        return Ok(());
+    }
+    create_private_dir(parent).map_err(open_error)
+}
+
+#[cfg(unix)]
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)?;
+    // DirBuilder still applies the process umask. Set the mode again.
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(not(unix))]
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(path)
+}
+
+fn restrict_database_files(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for suffix in ["", "-wal", "-shm"] {
+            let candidate = if suffix.is_empty() {
+                path.to_path_buf()
+            } else {
+                PathBuf::from(format!("{}{suffix}", path.display()))
+            };
+            if candidate.exists() {
+                let _ = fs::set_permissions(&candidate, fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+}
+
 fn open_error(error: std::io::Error) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CANTOPEN),
@@ -135,10 +181,12 @@ fn worker_main(
             return;
         }
     };
+    restrict_database_files(&path);
     if let Err(error) = prepare_connection(&conn) {
         let _ = ready.send(Err(error));
         return;
     }
+    restrict_database_files(&path);
     let internal = Arc::new(AtomicBool::new(false));
     let schema_changed = Arc::new(AtomicBool::new(false));
     let deny_reason = Arc::new(Mutex::new(String::new()));
@@ -666,6 +714,111 @@ mod tests {
         let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
         let error = run(&worker, "PRAGMA writable_schema=ON", vec![]).unwrap_err();
         assert!(matches!(error, SqlError::AuthorizerDenied { .. }), "{error:?}");
+    }
+
+    #[test]
+    fn filesystem_functions_and_detach_are_denied() {
+        let spilled = temp_db("spill");
+        let cases = [
+            "SELECT load_extension('nope')",
+            "SELECT readfile('/etc/hosts')",
+            &format!("SELECT writefile('{}', 'nope')", spilled.display()),
+            "DETACH DATABASE main",
+        ];
+        for sql in cases {
+            let path = temp_db("fs");
+            let worker = SqliteWorker::open(&path, 1, "LOC").unwrap();
+            let error = run(&worker, sql, vec![]).unwrap_err();
+            let denied = match &error {
+                SqlError::AuthorizerDenied { .. } => true,
+                // Bundled SQLite rejects load_extension before the authorizer, with
+                // "not authorized to use function".
+                SqlError::Sqlite { message, .. } => {
+                    let message = message.to_ascii_lowercase();
+                    // load_extension is compiled out ("not authorized"). readfile and
+                    // writefile are not part of this SQLite build ("no such function").
+                    message.contains("not authorized") || message.contains("no such function")
+                }
+                _ => false,
+            };
+            assert!(denied, "{sql}: {error:?}");
+        }
+        assert!(!spilled.exists());
+    }
+
+    #[test]
+    fn dropping_a_waiter_does_not_block_the_next_request() {
+        let path = temp_db("cancel");
+        let (parked_tx, parked_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let worker = SqliteWorker::open_with_pause(
+            &path,
+            4,
+            "LOC",
+            PauseGate {
+                parked: parked_tx,
+                release: release_rx,
+            },
+        )
+        .unwrap();
+        run_paused(
+            &worker,
+            &parked_rx,
+            &release_tx,
+            "CREATE TABLE t(n TEXT)",
+            vec![],
+        )
+        .unwrap();
+        let queued = enqueue(
+            &worker,
+            "INSERT INTO t VALUES (?)",
+            vec![SqlValue::Text("kept".into())],
+        );
+        // The client is gone. The worker still owns the only connection, so the
+        // statement runs to commit instead of leaving a transaction open.
+        drop(queued);
+        release_job(&parked_rx, &release_tx);
+        let next = enqueue(&worker, "SELECT n FROM t", vec![]);
+        release_job(&parked_rx, &release_tx);
+        let response = accept(next).blocking_recv().unwrap().unwrap();
+        assert_eq!(
+            response.statements[0].rows,
+            vec![vec![SqlValue::Text("kept".into())]]
+        );
+    }
+
+    #[test]
+    fn new_database_directory_and_file_are_owner_only() {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir()
+            .join(format!("osd1-priv-{}-{n}", std::process::id()))
+            .join("osd1.db");
+        let worker = SqliteWorker::open(&path, 1, "LOC").unwrap();
+        run(&worker, "SELECT 1", vec![]).unwrap();
+        drop(worker);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir_mode = fs::metadata(path.parent().unwrap())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            let file_mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(dir_mode, 0o700, "directory mode {dir_mode:o}");
+            assert_eq!(file_mode, 0o600, "database mode {file_mode:o}");
+            for suffix in ["-wal", "-shm"] {
+                let extra = PathBuf::from(format!("{}{suffix}", path.display()));
+                if extra.exists() {
+                    let mode = fs::metadata(&extra).unwrap().permissions().mode() & 0o777;
+                    assert_eq!(mode, 0o600, "{} mode {mode:o}", extra.display());
+                }
+            }
+        }
+        let _ = fs::remove_dir_all(path.parent().unwrap());
     }
 
     fn enqueue(worker: &SqliteWorker, sql: &str, params: Vec<SqlValue>) -> EnqueueResult {

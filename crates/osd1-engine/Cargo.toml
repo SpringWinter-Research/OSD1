@@ -7,3 +7,5 @@ publish.workspace = true
 
 [dependencies]
 osd1-types = { workspace = true }
+rusqlite = { workspace = true, features = ["hooks"] }
+tokio = { workspace = true }

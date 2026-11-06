@@ -13,3 +13,5 @@ path = "src/main.rs"
 osd1-engine = { workspace = true }
 osd1-http = { workspace = true }
 osd1-types = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }

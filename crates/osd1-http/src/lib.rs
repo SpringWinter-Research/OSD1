@@ -1,13 +1,17 @@
-//! D1 REST `/query` and `/raw` HTTP adapter.
+//! D1 REST `/query` and `/raw` HTTP adapter, plus the table explorer page.
 
-use std::time::Duration;
+mod metrics;
+
+use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use metrics::{route_label, Metrics, SqlObservation};
 use osd1_types::{
     parse_params, row_to_object, EnqueueResult, ResultShape, SqlError, SqlRequest, SqlResponse,
     SqlValue, StatementResult, ERROR_BAD_REQUEST, ERROR_QUEUE_FULL, ERROR_SQL, ERROR_UNAUTHORIZED,
@@ -27,6 +31,7 @@ pub struct AppState {
     pub max_body_bytes: usize,
     pub max_response_bytes: usize,
     pub request_timeout: Option<Duration>,
+    pub metrics: Metrics,
 }
 
 impl AppState {
@@ -40,18 +45,24 @@ impl AppState {
             max_body_bytes: 1024 * 1024,
             max_response_bytes: 1024 * 1024,
             request_timeout: Some(Duration::from_secs(30)),
+            metrics: Metrics::new(),
         }
     }
 }
 
-/// Routes `GET /health`, `POST /accounts/{account_id}/d1/database/{database_id}/query`,
-/// and the matching `/raw` route.
+/// Routes `GET /`, `GET /explorer`, `GET /health`, `GET /metrics`,
+/// `POST /accounts/{account_id}/d1/database/{database_id}/query`, and the matching `/raw` route.
 ///
-/// `/health` does not enqueue. Path ids are ignored.
+/// `/`, `/explorer`, `/health`, and `/metrics` do not enqueue and do not use the bearer token.
+/// Path ids are ignored. The explorer page calls `/raw` with the token.
 pub fn router(state: AppState) -> Router {
     let max_body_bytes = state.max_body_bytes;
+    let metrics = state.metrics.clone();
     Router::new()
+        .route("/", get(explorer))
+        .route("/explorer", get(explorer))
         .route("/health", get(health))
+        .route("/metrics", get(metrics_endpoint))
         .route(
             "/accounts/{account_id}/d1/database/{database_id}/query",
             post(query),
@@ -61,11 +72,58 @@ pub fn router(state: AppState) -> Router {
             post(raw),
         )
         .layer(DefaultBodyLimit::max(max_body_bytes))
+        .layer(middleware::from_fn(move |request: Request, next: Next| {
+            let metrics = metrics.clone();
+            async move {
+                let route = route_label(request.uri().path());
+                let started = Instant::now();
+                let response = next.run(request).await;
+                metrics.observe_http(
+                    route,
+                    response.status().as_u16(),
+                    started.elapsed().as_secs_f64(),
+                );
+                response
+            }
+        }))
         .with_state(state)
+}
+
+const EXPLORER_HTML: &str = include_str!("../static/explorer.html");
+
+async fn explorer() -> Response {
+    (
+        StatusCode::OK,
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            ),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
+        ],
+        EXPLORER_HTML,
+    )
+        .into_response()
 }
 
 async fn health() -> Response {
     json_response(StatusCode::OK, HealthBody { ok: true })
+}
+
+async fn metrics_endpoint(State(state): State<AppState>) -> Response {
+    state.metrics.set_queue(
+        state.executor.sql_inflight(),
+        state.executor.sql_queue_capacity(),
+    );
+    (
+        StatusCode::OK,
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
+        )],
+        state.metrics.encode(),
+    )
+        .into_response()
 }
 
 async fn query(
@@ -101,8 +159,14 @@ async fn handle(
     };
     match state.executor.enqueue(request) {
         EnqueueResult::Accepted(receiver) => wait_for_sql(state, receiver, shape).await,
-        EnqueueResult::Full => queue_full(),
-        EnqueueResult::Closed => shut_down(),
+        EnqueueResult::Full => {
+            state.metrics.observe_sql("queue_full", shape, None);
+            queue_full()
+        }
+        EnqueueResult::Closed => {
+            state.metrics.observe_sql("shut_down", shape, None);
+            shut_down()
+        }
     }
 }
 
@@ -114,30 +178,51 @@ async fn wait_for_sql(
     let pending = async {
         match receiver.await {
             Ok(Ok(response)) => limited_success(state, &response, shape),
-            Ok(Err(SqlError::ShuttingDown)) => shut_down(),
-            Ok(Err(error)) => fail(StatusCode::BAD_REQUEST, ERROR_SQL, error.to_string()),
+            Ok(Err(SqlError::ShuttingDown)) => {
+                state.metrics.observe_sql("shut_down", shape, None);
+                shut_down()
+            }
+            Ok(Err(SqlError::QueueFull)) => {
+                state.metrics.observe_sql("queue_full", shape, None);
+                queue_full()
+            }
+            Ok(Err(error)) => {
+                state.metrics.observe_sql("sql_error", shape, None);
+                fail(StatusCode::BAD_REQUEST, ERROR_SQL, error.to_string())
+            }
             // The worker dropped the response channel.
-            Err(_recv) => shut_down(),
+            Err(_recv) => {
+                state.metrics.observe_sql("shut_down", shape, None);
+                shut_down()
+            }
         }
     };
     match state.request_timeout {
         Some(limit) => match tokio::time::timeout(limit, pending).await {
             Ok(response) => response,
-            Err(_elapsed) => request_timed_out(),
+            Err(_elapsed) => {
+                state.metrics.observe_sql("timeout", shape, None);
+                request_timed_out()
+            }
         },
         None => pending.await,
     }
 }
 
 fn limited_success(state: &AppState, response: &SqlResponse, shape: ResultShape) -> Response {
+    let observation = observation_from(response);
     let bytes = serde_json::to_vec(&success_body(response, shape)).expect("envelope is json");
     if bytes.len() > state.max_response_bytes {
+        state
+            .metrics
+            .observe_sql("response_too_large", shape, Some(observation));
         return fail(
             StatusCode::BAD_REQUEST,
             ERROR_SQL,
             "response exceeds the size limit",
         );
     }
+    state.metrics.observe_sql("ok", shape, Some(observation));
     (
         StatusCode::OK,
         [(
@@ -147,6 +232,26 @@ fn limited_success(state: &AppState, response: &SqlResponse, shape: ResultShape)
         bytes,
     )
         .into_response()
+}
+
+fn observation_from(response: &SqlResponse) -> SqlObservation {
+    let mut seconds = 0.0;
+    let mut rows_read = 0;
+    let mut rows_written = 0;
+    let mut database_size_bytes = 0;
+    for statement in &response.statements {
+        seconds += statement.meta.duration_ms / 1000.0;
+        rows_read += statement.meta.rows_read;
+        rows_written += statement.meta.rows_written;
+        database_size_bytes = statement.meta.size_after;
+    }
+    SqlObservation {
+        seconds,
+        statements: response.statements.len() as u64,
+        rows_read,
+        rows_written,
+        database_size_bytes,
+    }
 }
 
 fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), Box<Response>> {
@@ -226,9 +331,9 @@ fn statement_envelope(statement: &StatementResult, shape: ResultShape) -> Statem
             last_row_id: meta.last_row_id,
             rows_read: meta.rows_read,
             rows_written: meta.rows_written,
-            served_by_colo: meta.served_by_colo.clone(),
+            served_by_colo: meta.served_by_colo.as_ref().to_owned(),
             served_by_primary: meta.served_by_primary,
-            served_by_region: meta.served_by_region.clone(),
+            served_by_region: meta.served_by_region.as_ref().to_owned(),
             size_after: meta.size_after,
             timings: TimingsEnvelope {
                 sql_duration_ms: meta.duration_ms,
@@ -247,7 +352,7 @@ fn results_value(statement: &StatementResult, shape: ResultShape) -> Value {
                 .collect(),
         ),
         ResultShape::Raw => serde_json::to_value(RawResults {
-            columns: statement.columns.clone(),
+            columns: statement.columns.iter().cloned().collect(),
             rows: statement
                 .rows
                 .iter()
@@ -504,15 +609,15 @@ mod tests {
             rows_read: 2,
             rows_written: 4,
             size_after: 11,
-            served_by_colo: "LOC".to_string(),
-            served_by_region: "WNAM".to_string(),
+            served_by_colo: Arc::from("LOC"),
+            served_by_region: Arc::from("WNAM"),
             served_by_primary: false,
         }
     }
 
     fn statement(column: &str, value: i64) -> StatementResult {
         StatementResult {
-            columns: vec![column.to_string()],
+            columns: Arc::from(vec![column.to_string()]),
             rows: vec![vec![SqlValue::Integer(value)]],
             meta: sample_meta(),
             success: true,
@@ -556,6 +661,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn metrics_are_prometheus_text_and_count_a_query() {
+        let (_fake, app) = app(ready_ok(vec![statement("n", 1)]), Some("secret"));
+        let (status, _, _) = dispatch(
+            app.clone(),
+            post(QUERY, Some("Bearer secret"), r#"{"sql":"SELECT 1"}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .expect("metrics");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/plain; version=0.0.4; charset=utf-8")
+        );
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("osd1_build_info{version=\"0.1.0\"} 1"));
+        assert!(text.contains("osd1_http_requests_total{route=\"query\",status=\"200\"} 1"));
+        assert!(text.contains("osd1_sql_requests_total{result=\"ok\",route=\"query\"} 1"));
+        assert!(text.contains("osd1_rows_read_total 2"));
+        assert!(text.contains("osd1_rows_written_total 4"));
+        assert!(text.contains("osd1_database_size_bytes 11"));
+        assert!(text.contains("osd1_sql_queue_capacity 0"));
+        assert!(!text.contains("SELECT"));
+        assert!(!text.contains("secret"));
+        assert!(!text.contains("osd1_raft"));
+    }
+
+    #[tokio::test]
     async fn health_does_not_enqueue() {
         let (_fake, app) = app(Outcome::Panic, Some("secret"));
         let (status, _, body) = dispatch(
@@ -569,6 +714,61 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, json!({ "ok": true }));
+    }
+
+    #[tokio::test]
+    async fn explorer_is_unauthenticated_html() {
+        let (fake, app) = app(Outcome::Panic, Some("secret"));
+        for uri in ["/", "/explorer"] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri(uri)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .expect("explorer");
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok()),
+                Some("text/html; charset=utf-8")
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("no-cache")
+            );
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let text = String::from_utf8(bytes.to_vec()).unwrap();
+            assert!(text.contains("API token"), "{uri}");
+            assert!(
+                text.contains("/accounts/local/d1/database/local/raw"),
+                "{uri}"
+            );
+        }
+        assert!(fake.requests.lock().unwrap().is_empty());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .expect("metrics");
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("route=\"explorer\""));
+        assert!(!text.contains("secret"));
+        assert!(!text.contains("SELECT"));
     }
 
     #[tokio::test]
@@ -811,7 +1011,7 @@ mod tests {
     async fn oversized_response_is_rejected() {
         let big = "x".repeat(4_000);
         let statement = StatementResult {
-            columns: vec!["v".to_string()],
+            columns: Arc::from(vec!["v".to_string()]),
             rows: vec![vec![SqlValue::Text(big.clone())]],
             meta: sample_meta(),
             success: true,
@@ -847,7 +1047,8 @@ mod tests {
         state.request_timeout = Some(Duration::from_millis(30));
         let app = router(state);
         let started = Instant::now();
-        let (status, headers, body) = dispatch(app, post(QUERY, None, r#"{"sql":"SELECT 1"}"#)).await;
+        let (status, headers, body) =
+            dispatch(app, post(QUERY, None, r#"{"sql":"SELECT 1"}"#)).await;
         assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
         assert_failure(&body, 7500, "sql request timed out");
         assert_eq!(

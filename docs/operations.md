@@ -48,3 +48,7 @@ persist ok
 The first JSON line is after `compose restart`. The second is after `compose up -d --force-recreate`.
 
 Litestream is not in this file. `deploy/compose.backup.yml` and `scripts/recovery.sh` add MinIO and Litestream. TLS for the same image is `./scripts/tls-check.sh`, which terminates TLS at nginx and forwards `Authorization` to OSD1.
+
+## Metrics
+
+`GET /metrics` is Prometheus text and does not use the bearer token. The scrape job, the series, and a Grafana dashboard are in [Monitoring](monitoring.md).

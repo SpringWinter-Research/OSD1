@@ -127,6 +127,7 @@ Parameters may be null, text, integers, or finite floats. `BEGIN`, `COMMIT`, `RO
 - One transaction per HTTP request
 - A fixed-size queue. Extra requests get 429
 - Bearer-token authentication
+- `GET /metrics` in Prometheus text format, for Grafana
 - Optional Litestream sidecar for backup to S3
 - Published images for `linux/arm64` and `linux/amd64`
 
@@ -198,6 +199,7 @@ Docker checks use port 8080. Run them one at a time:
 - [API examples](api-examples.md)
 - [SDK compatibility](compatibility.md)
 - [Operations](operations.md)
+- [Monitoring](monitoring.md)
 - [Backup and restore](backup-restore.md)
 - [Benchmarks](benchmark.md)
 - [Testing](testing.md)

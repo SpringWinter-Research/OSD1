@@ -29,6 +29,8 @@ curl -sS http://127.0.0.1:8080/health
 {"ok":true}
 ```
 
+Open [http://127.0.0.1:8080/](http://127.0.0.1:8080/) for the table explorer. Sign in with the same bearer token, or leave it blank when the server has no token. The page lists tables, creates them, and runs SQL through `/raw`.
+
 **3. Run a query**
 
 ```bash
@@ -88,6 +90,8 @@ Parameters may be null, text, integers, or finite floats. `BEGIN`, `COMMIT`, `RO
 - One transaction per HTTP request
 - A fixed-size queue. Extra requests get 429
 - Bearer-token authentication
+- A table explorer at `/` and `/explorer`
+- `GET /metrics` in Prometheus text format, for Grafana
 - Optional Litestream sidecar for backup to S3
 - Published images for `linux/arm64` and `linux/amd64`
 
@@ -157,6 +161,7 @@ Docker checks use port 8080. Run them one at a time:
 - [API examples](docs/api-examples.md)
 - [SDK compatibility](docs/compatibility.md)
 - [Operations](docs/operations.md)
+- [Monitoring](docs/monitoring.md)
 - [Backup and restore](docs/backup-restore.md)
 - [Benchmarks](docs/benchmark.md)
 - [Testing](docs/testing.md)

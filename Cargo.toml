@@ -5,6 +5,7 @@ members = [
     "crates/osd1-engine",
     "crates/osd1-http",
     "crates/osd1-server",
+    "crates/osd1-raft",
 ]
 
 [workspace.package]
@@ -17,11 +18,20 @@ publish = false
 osd1-types = { path = "crates/osd1-types" }
 osd1-engine = { path = "crates/osd1-engine" }
 osd1-http = { path = "crates/osd1-http" }
+osd1-raft = { path = "crates/osd1-raft" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal", "net"] }
 axum = "0.8"
+prometheus = "0.13"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# 0.9 is the stable line. 0.10 is alpha. `serde` serializes log entries.
+# `single-term-leader` is the Raft paper's election safety rule.
+openraft = { version = "0.9", features = ["serde", "single-term-leader"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

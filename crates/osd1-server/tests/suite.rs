@@ -39,7 +39,13 @@ impl Drop for Running {
 
 impl Running {
     async fn start(capacity: usize) -> Self {
-        Self::open(capacity, "suite-token", 1024 * 1024, Some(Duration::from_secs(30))).await
+        Self::open(
+            capacity,
+            "suite-token",
+            1024 * 1024,
+            Some(Duration::from_secs(30)),
+        )
+        .await
     }
 
     async fn open(
@@ -50,7 +56,8 @@ impl Running {
     ) -> Self {
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("osd1-suite-{}-{n}", std::process::id()));
-        let worker = SqliteWorker::open(dir.join("osd1.db"), capacity, "LOC").expect("open database");
+        let worker =
+            SqliteWorker::open(dir.join("osd1.db"), capacity, "LOC").expect("open database");
         let executor: Arc<dyn SqlExecutor> = Arc::new(worker);
         let mut state = AppState::new(Arc::clone(&executor), Some(token.to_string()));
         state.max_body_bytes = max_body_bytes;
@@ -299,19 +306,26 @@ async fn transactions_commit_rollback_and_constraint_failures() {
         .await;
     server.ok("INSERT INTO uniq (n) VALUES (1)", None).await;
     let (status, body) = server
-        .post("INSERT INTO uniq (n) VALUES (2); INSERT INTO uniq (n) VALUES (1)", None)
+        .post(
+            "INSERT INTO uniq (n) VALUES (2); INSERT INTO uniq (n) VALUES (1)",
+            None,
+        )
         .await;
     assert_eq!(status, 400, "{body}");
     let left = server.ok("SELECT n FROM uniq ORDER BY n", None).await;
     assert_eq!(left["result"][0]["results"], json!([{"n": 1}]));
 
-    let (status, body) = server.post("INSERT INTO child (parent_id) VALUES (9)", None).await;
+    let (status, body) = server
+        .post("INSERT INTO child (parent_id) VALUES (9)", None)
+        .await;
     assert_eq!(status, 400, "{body}");
     let children = server.ok("SELECT COUNT(*) AS n FROM child", None).await;
     assert_eq!(cell(&children, "n"), &json!(0));
 
     server.ok("INSERT INTO parent (id) VALUES (9)", None).await;
-    server.ok("INSERT INTO child (parent_id) VALUES (9)", None).await;
+    server
+        .ok("INSERT INTO child (parent_id) VALUES (9)", None)
+        .await;
     let committed = server.ok("SELECT parent_id FROM child", None).await;
     assert_eq!(cell(&committed, "parent_id"), &json!(9));
 
@@ -514,7 +528,9 @@ fn process_kill_keeps_committed_rows_and_hides_the_token() {
         "POST",
         "/accounts/kill/d1/database/kill/query",
         Some(token),
-        Some(r#"{"sql":"CREATE TABLE kept (note TEXT); INSERT INTO kept (note) VALUES ('still-here')"}"#),
+        Some(
+            r#"{"sql":"CREATE TABLE kept (note TEXT); INSERT INTO kept (note) VALUES ('still-here')"}"#,
+        ),
     );
     assert_eq!(status, 200);
     let logged = std::fs::read_to_string(&log).unwrap_or_default();
@@ -559,9 +575,9 @@ fn wait_health(port: u16) {
     let addr = format!("127.0.0.1:{port}").parse().unwrap();
     let started = std::time::Instant::now();
     while started.elapsed() < Duration::from_secs(10) {
-        if let Ok((status, body)) = std::panic::catch_unwind(|| {
-            exchange_blocking(addr, "GET", "/health", None, None)
-        }) {
+        if let Ok((status, body)) =
+            std::panic::catch_unwind(|| exchange_blocking(addr, "GET", "/health", None, None))
+        {
             if status == 200 && body.contains("true") {
                 return;
             }

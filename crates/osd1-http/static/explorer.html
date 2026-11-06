@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OSD1</title>
+  <style>
+    :root {
+      --bg: #f6f3ec;
+      --ink: #1a1814;
+      --muted: #5c564c;
+      --line: #e4ddd0;
+      --paper: #fffdf8;
+      --accent: #0e6b54;
+      --serif: "Iowan Old Style", Palatino, Georgia, serif;
+      --sans: "Avenir Next", "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+
+    [hidden] { display: none !important; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.4;
+      font-feature-settings: "kern" 1, "liga" 1;
+      text-rendering: optimizeLegibility;
+    }
+
+    body[data-busy="1"] { cursor: progress; }
+
+    button, input, select, textarea { font: inherit; color: inherit; }
+
+    button {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      padding: 0.35rem 0.7rem;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--paper);
+    }
+
+    button.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 2px;
+      padding: 0.4rem 0.55rem;
+    }
+
+    textarea {
+      font-family: var(--mono);
+      font-size: 0.9375rem;
+      min-height: 9rem;
+      resize: vertical;
+    }
+
+    h1, h2, h3 {
+      font-family: var(--serif);
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      hyphens: none;
+      margin: 0;
+    }
+
+    h1 { font-size: 1.75rem; }
+    h2 { font-size: 1.35rem; }
+    h3 { font-size: 1.05rem; margin-top: 1.25rem; }
+
+    p { margin: 0.4rem 0; }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.9375rem;
+      max-width: 62ch;
+    }
+
+    .error { color: #8c2f24; max-width: 62ch; }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.9em;
+    }
+
+    .login {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem 1rem;
+    }
+
+    .card {
+      width: min(28rem, 100%);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      padding: 1.5rem 1.35rem 1.35rem;
+    }
+
+    .card h1 { margin-bottom: 0.2rem; }
+
+    label {
+      display: block;
+      margin-top: 1rem;
+    }
+
+    label span,
+    .side-label {
+      display: block;
+      margin-bottom: 0.3rem;
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    label span.caption {
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 0.875rem;
+    }
+
+    .card button { margin-top: 1rem; }
+
+    #app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid var(--line);
+      background: var(--bg);
+    }
+
+    .brand {
+      font-family: var(--serif);
+      font-size: 1.25rem;
+      margin-right: auto;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .shell {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+    }
+
+    aside {
+      width: 16rem;
+      flex: none;
+      border-right: 1px solid var(--line);
+      overflow: auto;
+      padding: 0.85rem 0.75rem 1.25rem;
+    }
+
+    .side-head {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .side-head .side-label { margin: 0 auto 0 0; }
+
+    #table-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    #table-list button {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      padding: 0.35rem 0.4rem;
+    }
+
+    #table-list button.active { background: var(--paper); }
+
+    .kind { color: var(--muted); font-size: 0.8rem; }
+
+    #main {
+      flex: 1;
+      min-width: 0;
+      overflow: auto;
+      padding: 1rem 1.15rem 2rem;
+    }
+
+    .table-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.5rem 0.7rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .table-head h2 { margin-right: auto; }
+
+    .grid-scroll { overflow-x: auto; margin-top: 0.4rem; }
+
+    table.grid {
+      width: 100%;
+      border-collapse: collapse;
+      font-variant-numeric: tabular-nums lining-nums;
+      font-size: 0.9375rem;
+    }
+
+    table.grid th,
+    table.grid td {
+      text-align: left;
+      padding: 0.45rem 0.75rem;
+      vertical-align: top;
+      white-space: pre-wrap;
+      max-width: 28rem;
+    }
+
+    table.grid th {
+      border-bottom: 1px solid var(--line);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    table.grid td.num { text-align: right; font-family: var(--mono); }
+
+    table.grid td.null { color: var(--muted); font-style: italic; }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin: 0.75rem 0 1rem;
+    }
+
+    #insert-form, #create-form {
+      max-width: 36rem;
+      margin-top: 1rem;
+    }
+
+    .col-row {
+      display: grid;
+      grid-template-columns: 1.4fr 0.8fr auto auto;
+      gap: 0.4rem;
+      align-items: center;
+      margin-bottom: 0.4rem;
+    }
+
+    .pk {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin: 0;
+      white-space: nowrap;
+      font-size: 0.875rem;
+    }
+
+    .pk input { width: auto; }
+
+    .actions { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
+
+    .sr {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 720px) {
+      .shell { flex-direction: column; }
+      aside {
+        width: auto;
+        max-height: 14rem;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .col-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <noscript><p>This page needs JavaScript.</p></noscript>
+
+  <main id="login" class="login">
+    <form id="login-form" class="card">
+      <h1>OSD1</h1>
+      <p class="hint">Table explorer</p>
+      <label for="token"><span>API token</span></label>
+      <input id="token" name="token" type="password" autocomplete="current-password">
+      <p class="hint">Use <code>OSD1_API_TOKEN</code>, or leave this blank when the server has no token. The token stays in this tab.</p>
+      <button class="primary" type="submit">Continue</button>
+      <p id="login-error" class="error" role="alert" hidden></p>
+    </form>
+  </main>
+
+  <div id="app" hidden>
+    <header>
+      <div class="brand">OSD1</div>
+      <span id="badge" class="badge" hidden></span>
+      <button type="button" id="sql-tab">SQL</button>
+      <button type="button" id="sign-out">Sign out</button>
+    </header>
+    <div class="shell">
+      <aside>
+        <div class="side-head">
+          <span class="side-label">Tables</span>
+          <button type="button" id="new-table">New table</button>
+          <button type="button" id="refresh">Refresh</button>
+        </div>
+        <ul id="table-list"></ul>
+        <p class="hint">Each write is one transaction. BEGIN and ATTACH are rejected.</p>
+      </aside>
+      <section id="main">
+        <p id="banner" class="error" role="alert" hidden></p>
+        <p id="status" class="hint" hidden></p>
+
+        <div id="panel-empty">
+          <p>Select a table, or create one.</p>
+        </div>
+
+        <div id="panel-create" hidden>
+          <h2>New table</h2>
+          <form id="create-form">
+            <label for="create-name"><span>Name</span></label>
+            <input id="create-name" autocomplete="off" spellcheck="false">
+            <div id="create-columns"></div>
+            <div class="actions">
+              <button type="button" id="add-column">Add column</button>
+              <button class="primary" type="submit">Create table</button>
+            </div>
+            <p class="hint">One primary key is optional. Defaults, checks, and extra keys belong in the SQL box.</p>
+          </form>
+        </div>
+
+        <div id="panel-table" hidden>
+          <div class="table-head">
+            <h2 id="table-title"></h2>
+            <span id="table-kind" class="kind"></span>
+            <button type="button" id="show-rows">Rows</button>
+            <button type="button" id="show-structure">Structure</button>
+            <button type="button" id="drop">Drop table</button>
+          </div>
+          <div id="grid-wrap"></div>
+          <div id="pager" class="pager"></div>
+          <form id="insert-form"></form>
+          <div id="structure" hidden></div>
+        </div>
+
+        <div id="panel-sql" hidden>
+          <h2>SQL</h2>
+          <form id="sql-form">
+            <label for="sql"><span class="sr">SQL</span></label>
+            <textarea id="sql" spellcheck="false"></textarea>
+            <div class="actions">
+              <button class="primary" type="submit">Run</button>
+            </div>
+            <p class="hint">Command or Control plus Enter. Each write is one transaction. BEGIN and ATTACH are rejected.</p>
+          </form>
+          <div id="sql-results"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <template id="column-row">
+    <div class="col-row">
+      <input class="col-name" autocomplete="off" spellcheck="false" placeholder="column" aria-label="Column name">
+      <select class="col-type" aria-label="Column type">
+        <option>INTEGER</option>
+        <option>TEXT</option>
+        <option>REAL</option>
+        <option>BLOB</option>
+      </select>
+      <label class="pk"><input class="col-pk" type="checkbox"> Primary key</label>
+      <button type="button" class="remove">Remove</button>
+    </div>
+  </template>
+
+  <script>
+    // /raw keeps SQL column order. /query objects sort keys alphabetically.
+    const RAW = "/accounts/local/d1/database/local/raw";
+    const PAGE = 100;
+    const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    const TYPES = ["INTEGER", "TEXT", "REAL", "BLOB"];
+    const CATALOG = "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name";
+
+    const state = {
+      token: "",
+      busy: false,
+      tables: [],
+      selected: null,
+      mode: "empty",
+      offset: 0,
+      columns: [],
+      hasRowid: false,
+      rowids: [],
+      primary: null,
+    };
+
+    function storageGet(key) {
+      try { return sessionStorage.getItem(key); } catch (err) { return null; }
+    }
+
+    function storageSet(key, value) {
+      try { sessionStorage.setItem(key, value); } catch (err) { /* this tab can still continue */ }
+    }
+
+    function storageRemove(key) {
+      try { sessionStorage.removeItem(key); } catch (err) { /* ignore */ }
+    }
+
+    function setLoginError(message) {
+      const el = document.getElementById("login-error");
+      el.textContent = message || "";
+      el.hidden = !message;
+    }
+
+    function setError(message) {
+      const el = document.getElementById("banner");
+      el.textContent = message || "";
+      el.hidden = !message;
+    }
+
+    function setStatus(message) {
+      const el = document.getElementById("status");
+      el.textContent = message || "";
+      el.hidden = !message;
+    }
+
+    function showLogin() {
+      document.getElementById("app").hidden = true;
+      document.getElementById("login").hidden = false;
+    }
+
+    function showApp() {
+      document.getElementById("login").hidden = true;
+      document.getElementById("app").hidden = false;
+    }
+
+    function handleError(err) {
+      const unreachable = err instanceof TypeError;
+      const message = unreachable ? "Could not reach the server." : (err.message || "Request failed.");
+      if (err.status === 401 || document.getElementById("app").hidden) {
+        storageRemove("osd1.signedIn");
+        showLogin();
+        setLoginError(err.status === 401 ? "That token was rejected." : message);
+        return;
+      }
+      setError(message);
+    }
+
+    async function withBusy(fn) {
+      if (state.busy) return;
+      state.busy = true;
+      document.body.dataset.busy = "1";
+      setStatus("Working.");
+      setError("");
+      try {
+        await fn();
+      } catch (err) {
+        handleError(err);
+      } finally {
+        state.busy = false;
+        delete document.body.dataset.busy;
+        setStatus("");
+      }
+    }
+
+    function renderBadge() {
+      const badge = document.getElementById("badge");
+      if (state.primary === null) {
+        badge.hidden = true;
+        return;
+      }
+      badge.hidden = false;
+      badge.textContent = state.primary ? "primary" : "follower";
+    }
+
+    async function raw(sql, params) {
+      const headers = { "content-type": "application/json" };
+      if (state.token) headers.Authorization = "Bearer " + state.token;
+      let response;
+      try {
+        response = await fetch(RAW, {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({ sql: sql, params: params || [] }),
+        });
+      } catch (err) {
+        const failure = new Error("Could not reach the server.");
+        failure.cause = err;
+        throw failure;
+      }
+      const text = await response.text();
+      let body = null;
+      if (text) {
+        try { body = JSON.parse(text); } catch (err) { body = null; }
+      }
+      if (response.status === 401) {
+        const failure = new Error("That token was rejected.");
+        failure.status = 401;
+        throw failure;
+      }
+      if (!response.ok || !body || body.success === false) {
+        const api = body && body.errors && body.errors[0] && body.errors[0].message;
+        const failure = new Error(api || ("Request failed (" + response.status + ")."));
+        failure.status = response.status;
+        throw failure;
+      }
+      const statements = body.result || [];
+      for (let i = 0; i < statements.length; i++) {
+        const meta = statements[i].meta;
+        if (meta && typeof meta.served_by_primary === "boolean") {
+          state.primary = meta.served_by_primary;
+        }
+      }
+      renderBadge();
+      return statements;
+    }
+
+    function quoteIdent(name) {
+      return '"' + String(name).replaceAll('"', '""') + '"';
+    }
+
+    function userIdent(value) {
+      if (!IDENT.test(value)) {
+        throw new Error("Use a letter or underscore, then letters, digits, or underscores.");
+      }
+      return '"' + value + '"';
+    }
+
+    function current() {
+      for (let i = 0; i < state.tables.length; i++) {
+        if (state.tables[i].name === state.selected) return state.tables[i];
+      }
+      return null;
+    }
+
+    function bindValue(text, type) {
+      if (text === "") return null;
+      const kind = String(type || "").toUpperCase();
+      if (kind.indexOf("INT") !== -1) {
+        if (/^-?(0|[1-9]\d{0,14})$/.test(text)) {
+          const number = Number(text);
+          if (Number.isSafeInteger(number)) return number;
+        }
+        return text;
+      }
+      if (kind === "REAL" || kind === "FLOAT" || kind === "DOUBLE") {
+        if (/^-?(0|[1-9]\d*)(\.\d+)?$/.test(text)) {
+          const number = Number(text);
+          if (Number.isFinite(number)) return number;
+        }
+        return text;
+      }
+      return text;
+    }
+
+    function cellValue(value) {
+      if (value === null || value === undefined) return null;
+      if (typeof value === "string" || typeof value === "number") return String(value);
+      return JSON.stringify(value);
+    }
+
+    function grid(columns, rows, options) {
+      const skip = options && options.skip;
+      const table = document.createElement("table");
+      table.className = "grid";
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      columns.forEach(function (column, index) {
+        if (skip && skip.has(index)) return;
+        const th = document.createElement("th");
+        th.scope = "col";
+        th.textContent = column;
+        headRow.append(th);
+      });
+      if (options && options.onDelete) {
+        const th = document.createElement("th");
+        th.scope = "col";
+        const span = document.createElement("span");
+        span.className = "sr";
+        span.textContent = "Delete";
+        th.append(span);
+        headRow.append(th);
+      }
+      thead.append(headRow);
+      const tbody = document.createElement("tbody");
+      if (!rows.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        let visible = 0;
+        columns.forEach(function (_, index) {
+          if (!(skip && skip.has(index))) visible += 1;
+        });
+        if (options && options.onDelete) visible += 1;
+        td.colSpan = Math.max(visible, 1);
+        td.className = "null";
+        td.textContent = "No rows.";
+        tr.append(td);
+        tbody.append(tr);
+      }
+      rows.forEach(function (row, rowIndex) {
+        const tr = document.createElement("tr");
+        row.forEach(function (value, index) {
+          if (skip && skip.has(index)) return;
+          const td = document.createElement("td");
+          const text = cellValue(value);
+          if (text === null) {
+            td.className = "null";
+            td.textContent = "NULL";
+          } else {
+            if (typeof value === "number") td.className = "num";
+            td.textContent = text;
+          }
+          tr.append(td);
+        });
+        if (options && options.onDelete) {
+          const td = document.createElement("td");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = "Delete";
+          button.addEventListener("click", function () { options.onDelete(rowIndex); });
+          td.append(button);
+          tr.append(td);
+        }
+        tbody.append(tr);
+      });
+      table.append(thead, tbody);
+      const wrap = document.createElement("div");
+      wrap.className = "grid-scroll";
+      wrap.append(table);
+      return wrap;
+    }
+
+    function renderTableList() {
+      const list = document.getElementById("table-list");
+      list.replaceChildren();
+      if (!state.tables.length) {
+        const item = document.createElement("li");
+        const note = document.createElement("p");
+        note.className = "hint";
+        note.textContent = "No tables yet.";
+        item.append(note);
+        list.append(item);
+        return;
+      }
+      state.tables.forEach(function (table) {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("data-name", table.name);
+        if (table.name === state.selected && state.mode !== "create" && state.mode !== "sql") {
+          button.className = "active";
+          button.setAttribute("aria-current", "true");
+        }
+        const name = document.createElement("span");
+        name.textContent = table.name;
+        button.append(name);
+        if (table.type === "view") {
+          const kind = document.createElement("span");
+          kind.className = "kind";
+          kind.textContent = "view";
+          button.append(kind);
+        }
+        item.append(button);
+        list.append(item);
+      });
+    }
+
+    function setMode(mode) {
+      state.mode = mode;
+      const table = current();
+      const isTable = table && table.type === "table";
+      document.getElementById("panel-empty").hidden = mode !== "empty";
+      document.getElementById("panel-create").hidden = mode !== "create";
+      document.getElementById("panel-table").hidden = mode !== "rows" && mode !== "structure";
+      document.getElementById("panel-sql").hidden = mode !== "sql";
+      document.getElementById("grid-wrap").hidden = mode !== "rows";
+      document.getElementById("pager").hidden = mode !== "rows";
+      document.getElementById("insert-form").hidden = mode !== "rows" || !isTable;
+      document.getElementById("structure").hidden = mode !== "structure";
+      document.getElementById("sql-tab").classList.toggle("active", mode === "sql");
+      document.getElementById("new-table").classList.toggle("active", mode === "create");
+      document.getElementById("show-rows").classList.toggle("active", mode === "rows");
+      document.getElementById("show-structure").classList.toggle("active", mode === "structure");
+      renderTableList();
+    }
+
+    async function loadTables() {
+      const statements = await raw(CATALOG, []);
+      const rows = statements[0] && statements[0].results && statements[0].results.rows || [];
+      state.tables = rows.map(function (row) {
+        return { name: String(row[0]), type: String(row[1]) };
+      });
+      if (state.selected && !current()) {
+        state.selected = null;
+        setMode("empty");
+      } else {
+        renderTableList();
+      }
+    }
+
+    async function fetchColumns(name) {
+      const statements = await raw("PRAGMA table_info(" + quoteIdent(name) + ")", []);
+      const rows = statements[0] && statements[0].results && statements[0].results.rows || [];
+      return rows.map(function (row) {
+        return {
+          name: row[1] == null ? "" : String(row[1]),
+          type: row[2] == null ? "" : String(row[2]),
+          notnull: Number(row[3]) === 1,
+          dflt: row[4],
+          pk: Number(row[5]) === 1,
+        };
+      });
+    }
+
+    async function fetchPage(name, offset) {
+      const quoted = quoteIdent(name);
+      let hasRowid = true;
+      let statements;
+      try {
+        statements = await raw(
+          "SELECT rowid AS __osd1_rowid, * FROM " + quoted + " LIMIT ? OFFSET ?",
+          [PAGE, offset]
+        );
+      } catch (err) {
+        if (!/rowid/i.test(err.message || "")) throw err;
+        hasRowid = false;
+        statements = await raw(
+          "SELECT * FROM " + quoted + " LIMIT ? OFFSET ?",
+          [PAGE, offset]
+        );
+      }
+      const results = statements[0].results || { columns: [], rows: [] };
+      let total = null;
+      try {
+        const count = await raw("SELECT COUNT(*) AS n FROM " + quoted, []);
+        total = count[0].results.rows[0][0];
+      } catch (err) {
+        total = null;
+      }
+      return {
+        columns: results.columns || [],
+        rows: results.rows || [],
+        hasRowid: hasRowid,
+        total: total,
+      };
+    }
+
+    function renderInsert() {
+      const form = document.getElementById("insert-form");
+      form.replaceChildren();
+      const table = current();
+      if (!table || table.type !== "table" || !state.columns.length) return;
+      const note = document.createElement("p");
+      note.className = "hint";
+      note.textContent = "Empty fields are NULL. An empty integer primary key lets SQLite assign rowid.";
+      form.append(note);
+      state.columns.forEach(function (column) {
+        const label = document.createElement("label");
+        const span = document.createElement("span");
+        const bits = [column.name];
+        if (column.type) bits.push(column.type);
+        if (column.pk) bits.push("primary key");
+        if (column.notnull) bits.push("required");
+        span.className = "caption";
+        span.textContent = bits.join(" · ");
+        const input = document.createElement("input");
+        input.autocomplete = "off";
+        input.spellcheck = false;
+        input.dataset.type = column.type;
+        input.setAttribute("aria-label", column.name);
+        label.append(span, input);
+        form.append(label);
+      });
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const button = document.createElement("button");
+      button.className = "primary";
+      button.type = "submit";
+      button.textContent = "Insert row";
+      actions.append(button);
+      form.append(actions);
+    }
+
+    function renderStructure() {
+      const host = document.getElementById("structure");
+      host.replaceChildren();
+      const columns = ["name", "type", "required", "default", "primary key"];
+      const rows = state.columns.map(function (column) {
+        return [
+          column.name,
+          column.type,
+          column.notnull ? "yes" : "no",
+          column.dflt == null ? null : column.dflt,
+          column.pk ? "yes" : "no",
+        ];
+      });
+      host.append(grid(columns, rows, null));
+    }
+
+    function renderPage(page) {
+      const skip = new Set();
+      state.hasRowid = page.hasRowid;
+      state.rowids = [];
+      let columns = page.columns;
+      let rows = page.rows;
+      if (page.hasRowid) {
+        const index = columns.indexOf("__osd1_rowid");
+        if (index !== -1) skip.add(index);
+        rows.forEach(function (row) {
+          state.rowids.push(index === -1 ? null : row[index]);
+        });
+      }
+      const table = current();
+      const canDelete = page.hasRowid && table && table.type === "table";
+      const wrap = document.getElementById("grid-wrap");
+      wrap.replaceChildren();
+      wrap.append(grid(columns, rows, {
+        skip: skip,
+        onDelete: canDelete ? deleteRow : null,
+      }));
+      const pager = document.getElementById("pager");
+      pager.replaceChildren();
+      const from = rows.length ? state.offset + 1 : 0;
+      const to = state.offset + rows.length;
+      const label = document.createElement("span");
+      if (!rows.length) label.textContent = "No rows.";
+      else if (page.total == null) label.textContent = from + "\u2013" + to;
+      else label.textContent = from + "\u2013" + to + " of " + page.total;
+      const prev = document.createElement("button");
+      prev.type = "button";
+      prev.textContent = "Previous";
+      prev.disabled = state.offset === 0;
+      prev.addEventListener("click", function () { turn(-1); });
+      const next = document.createElement("button");
+      next.type = "button";
+      next.textContent = "Next";
+      const atEnd = rows.length < PAGE || (page.total != null && to >= page.total);
+      next.disabled = atEnd;
+      next.addEventListener("click", function () { turn(1); });
+      pager.append(prev, label, next);
+    }
+
+    async function showTable(name, offset) {
+      offset = offset || 0;
+      const columns = await fetchColumns(name);
+      let page = await fetchPage(name, offset);
+      if (!page.rows.length && offset > 0) {
+        offset = Math.max(0, offset - PAGE);
+        page = await fetchPage(name, offset);
+      }
+      state.selected = name;
+      state.offset = offset;
+      state.columns = columns;
+      const table = current();
+      document.getElementById("table-title").textContent = name;
+      document.getElementById("table-kind").textContent = table ? table.type : "";
+      document.getElementById("drop").textContent = table && table.type === "view" ? "Drop view" : "Drop table";
+      renderInsert();
+      renderStructure();
+      renderPage(page);
+      setMode(state.mode === "structure" ? "structure" : "rows");
+    }
+
+    function deleteRow(index) {
+      const rowid = state.rowids[index];
+      const table = current();
+      if (!table || rowid == null) return;
+      if (!window.confirm("Delete this row?")) return;
+      withBusy(async function () {
+        await raw("DELETE FROM " + quoteIdent(table.name) + " WHERE rowid = ?", [rowid]);
+        await showTable(table.name, state.offset);
+      });
+    }
+
+    function turn(direction) {
+      if (!state.selected) return;
+      const offset = Math.max(0, state.offset + direction * PAGE);
+      withBusy(function () { return showTable(state.selected, offset); });
+    }
+
+    function wireColumn(row) {
+      const box = row.querySelector(".col-pk");
+      box.addEventListener("change", function () {
+        if (!box.checked) return;
+        document.querySelectorAll(".col-pk").forEach(function (other) {
+          if (other !== box) other.checked = false;
+        });
+      });
+      row.querySelector(".remove").addEventListener("click", function () {
+        if (document.querySelectorAll("#create-columns .col-row").length === 1) return;
+        row.remove();
+      });
+    }
+
+    function addColumn(focus) {
+      const row = document.getElementById("column-row").content.firstElementChild.cloneNode(true);
+      wireColumn(row);
+      document.getElementById("create-columns").append(row);
+      if (focus) row.querySelector(".col-name").focus();
+    }
+
+    function resetCreateForm() {
+      document.getElementById("create-name").value = "";
+      document.getElementById("create-columns").replaceChildren();
+      addColumn(false);
+    }
+
+    function renderSql(statements) {
+      const host = document.getElementById("sql-results");
+      host.replaceChildren();
+      statements.forEach(function (statement, index) {
+        const block = document.createElement("section");
+        const heading = document.createElement("h3");
+        heading.textContent = "Statement " + (index + 1);
+        block.append(heading);
+        const results = statement.results || {};
+        const columns = results.columns || [];
+        const rows = results.rows || [];
+        if (!columns.length) {
+          const done = document.createElement("p");
+          done.textContent = "Done.";
+          block.append(done);
+        } else {
+          block.append(grid(columns, rows, null));
+        }
+        if (statement.meta && statement.meta.changes) {
+          const changes = document.createElement("p");
+          changes.className = "hint";
+          const n = statement.meta.changes;
+          changes.textContent = n + (n === 1 ? " change" : " changes");
+          block.append(changes);
+        }
+        host.append(block);
+      });
+    }
+
+    document.getElementById("login-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      setLoginError("");
+      state.token = document.getElementById("token").value;
+      withBusy(async function () {
+        await raw("SELECT 1", []);
+        storageSet("osd1.signedIn", "1");
+        storageSet("osd1.token", state.token);
+        showApp();
+        await loadTables();
+        if (!state.selected) setMode("empty");
+      });
+    });
+
+    document.getElementById("sign-out").addEventListener("click", function () {
+      storageRemove("osd1.signedIn");
+      storageRemove("osd1.token");
+      state.token = "";
+      state.primary = null;
+      document.getElementById("token").value = "";
+      showLogin();
+    });
+
+    document.getElementById("table-list").addEventListener("click", function (event) {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const name = button.getAttribute("data-name");
+      if (!name) return;
+      state.mode = "rows";
+      withBusy(function () { return showTable(name, 0); });
+    });
+
+    document.getElementById("new-table").addEventListener("click", function () {
+      setMode("create");
+    });
+
+    document.getElementById("refresh").addEventListener("click", function () {
+      withBusy(async function () {
+        await loadTables();
+        if (state.selected && (state.mode === "rows" || state.mode === "structure")) {
+          await showTable(state.selected, state.offset);
+        }
+      });
+    });
+
+    document.getElementById("show-rows").addEventListener("click", function () {
+      if (state.selected) setMode("rows");
+    });
+
+    document.getElementById("show-structure").addEventListener("click", function () {
+      if (state.selected) setMode("structure");
+    });
+
+    document.getElementById("drop").addEventListener("click", function () {
+      const table = current();
+      if (!table) return;
+      const verb = table.type === "view" ? "VIEW" : "TABLE";
+      if (!window.confirm("Drop " + table.type + " " + table.name + "?")) return;
+      withBusy(async function () {
+        await raw("DROP " + verb + " " + quoteIdent(table.name), []);
+        state.selected = null;
+        await loadTables();
+        setMode("empty");
+      });
+    });
+
+    document.getElementById("insert-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const table = current();
+      if (!table || !state.columns.length) return;
+      const inputs = event.currentTarget.querySelectorAll("input");
+      withBusy(async function () {
+        const names = [];
+        const params = [];
+        state.columns.forEach(function (column, index) {
+          names.push(quoteIdent(column.name));
+          params.push(bindValue(inputs[index].value, column.type));
+        });
+        const marks = params.map(function () { return "?"; }).join(", ");
+        await raw(
+          "INSERT INTO " + quoteIdent(table.name) + " (" + names.join(", ") + ") VALUES (" + marks + ")",
+          params
+        );
+        inputs.forEach(function (input) { input.value = ""; });
+        await showTable(table.name, state.offset);
+      });
+    });
+
+    document.getElementById("create-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      withBusy(async function () {
+        const name = document.getElementById("create-name").value.trim();
+        const rows = document.querySelectorAll("#create-columns .col-row");
+        if (!rows.length) throw new Error("Add a column.");
+        const defs = [];
+        let keys = 0;
+        rows.forEach(function (row) {
+          const colName = row.querySelector(".col-name").value.trim();
+          const type = row.querySelector(".col-type").value;
+          if (TYPES.indexOf(type) === -1) throw new Error("Unknown column type.");
+          const pk = row.querySelector(".col-pk").checked;
+          if (pk) keys += 1;
+          defs.push(userIdent(colName) + " " + type + (pk ? " PRIMARY KEY" : ""));
+        });
+        if (keys > 1) throw new Error("Choose one primary key.");
+        await raw("CREATE TABLE " + userIdent(name) + " (" + defs.join(", ") + ")", []);
+        resetCreateForm();
+        await loadTables();
+        state.mode = "rows";
+        await showTable(name, 0);
+      });
+    });
+
+    document.getElementById("add-column").addEventListener("click", function () {
+      addColumn(true);
+    });
+
+    document.getElementById("sql-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const sql = document.getElementById("sql").value;
+      withBusy(async function () {
+        const statements = await raw(sql, []);
+        renderSql(statements);
+        await loadTables();
+      });
+    });
+
+    document.getElementById("sql").addEventListener("keydown", function (event) {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        document.getElementById("sql-form").requestSubmit();
+      }
+    });
+
+    document.getElementById("sql-tab").addEventListener("click", function () {
+      setMode("sql");
+    });
+
+    resetCreateForm();
+    document.getElementById("token").value = storageGet("osd1.token") || "";
+    if (storageGet("osd1.signedIn") === "1") {
+      state.token = document.getElementById("token").value;
+      withBusy(async function () {
+        await raw("SELECT 1", []);
+        showApp();
+        await loadTables();
+        setMode("empty");
+      });
+    } else {
+      showLogin();
+    }
+  </script>
+</body>
+</html>

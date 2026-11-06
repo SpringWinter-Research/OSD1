@@ -4,6 +4,8 @@
 //! `cloudflare@4.5.0` SDK accepted. JSON encoding of that envelope lives in
 //! `osd1-http`. This crate is the value types both sides share.
 
+use std::sync::Arc;
+
 use serde_json::Value;
 
 /// SQL execution failed. The HTTP layer maps this to status 400, code [`ERROR_SQL`].
@@ -85,7 +87,10 @@ fn value_from_json(index: usize, value: Value) -> Result<SqlValue, ParamError> {
 pub fn row_to_object(columns: &[String], values: &[SqlValue]) -> Value {
     let mut object = serde_json::Map::new();
     for (index, column) in columns.iter().enumerate() {
-        let value = values.get(index).map(SqlValue::to_json).unwrap_or(Value::Null);
+        let value = values
+            .get(index)
+            .map(SqlValue::to_json)
+            .unwrap_or(Value::Null);
         object.insert(column.clone(), value);
     }
     Value::Object(object)
@@ -113,14 +118,14 @@ pub struct StatementMeta {
     pub rows_read: u64,
     pub rows_written: u64,
     pub size_after: u64,
-    pub served_by_colo: String,
-    pub served_by_region: String,
+    pub served_by_colo: Arc<str>,
+    pub served_by_region: Arc<str>,
     pub served_by_primary: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatementResult {
-    pub columns: Vec<String>,
+    pub columns: Arc<[String]>,
     pub rows: Vec<Vec<SqlValue>>,
     pub meta: StatementMeta,
     pub success: bool,
@@ -154,6 +159,16 @@ pub enum EnqueueResult {
 
 pub trait SqlExecutor: Send + Sync {
     fn enqueue(&self, request: SqlRequest) -> EnqueueResult;
+
+    /// Accepted requests that have not finished. This includes the request running on the SQL thread.
+    fn sql_inflight(&self) -> usize {
+        0
+    }
+
+    /// How many requests may wait in the queue. The running request is outside this bound.
+    fn sql_queue_capacity(&self) -> usize {
+        0
+    }
 }
 
 #[cfg(test)]

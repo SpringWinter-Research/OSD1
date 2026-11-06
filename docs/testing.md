@@ -6,7 +6,20 @@ title: Testing
 
 # Testing
 
-OSD1 has three kinds of checks: functional categories, workload profiles, and security controls. A row is claimed only after the command in that row has been run and its output recorded.
+Three kinds of checks: the SQL and HTTP behavior, the four workloads, and the security controls. A row below is from a run on 6 Nov 2026.
+
+| Check | What happened |
+| --- | --- |
+| `cargo test --workspace` | Passed. Engine 11, HTTP 18, server 1, suite 9, types 5. The suite took 0.81 s |
+| SDK | `node spike/sdk-compat.mjs` printed `sdk-compat ok` |
+| Profiles | `./scripts/profiles.sh` exited 0. Numbers are on the benchmark page. Peak memory was 6.5 MB |
+| Restart | `./scripts/persist.sh` exited 0. The row was still there after restart and recreate |
+| TLS | `./scripts/tls-check.sh` exited 0. Health was ok. A bad token was 401 |
+| Missing volume and failed restore | `./scripts/recovery-cases.sh` exited 0 |
+| Backup | `./scripts/recovery.sh` exited 0. Integrity check was `ok` |
+| Scan | `cargo audit` was clean for 77 crates. Trivy found 225 Debian issues, one of them critical |
+
+The sections under this table say which file or script covers each case.
 
 ## Functional categories
 

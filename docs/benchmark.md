@@ -6,6 +6,23 @@ title: Benchmark
 
 # Benchmark
 
+Apple M4, 6 Nov 2026. The tables are the same runs as the blocks below.
+
+A release build serving `SELECT 1` over keep-alive HTTP reached 25,467 requests/s with one client and 111,075 requests/s with 32 clients. Eight clients did 82,129/s and 16 clients did 102,234/s. The rate flattened, so the SQL thread was full.
+
+SQLite on the same machine, with no HTTP: 2,516,325 in-memory transactions per second, 543,065 WAL `synchronous=FULL` transactions per second, and 3,447,361 indexed reads per second inside one transaction.
+
+The four workloads below used one Python client against the release binary. They are latency for that client, not the 111k ceiling.
+
+| Workload | p50 | p95 | p99 | Requests/s | Memory |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Read-heavy | 0.17 ms | 0.49 ms | 0.78 ms | 2,335 | 5.8 MB |
+| Balanced | 0.16 ms | 0.47 ms | 0.95 ms | 2,554 | 5.4 MB |
+| Write-heavy | 0.14 ms | 0.48 ms | 1.64 ms | 2,568 | 4.8 MB |
+| Mixed | 0.16 ms | 0.36 ms | 0.45 ms | 3,413 | 6.5 MB |
+
+## Debug bench
+
 Local process, not the Docker image. Command:
 
 ```bash

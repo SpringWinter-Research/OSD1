@@ -6,19 +6,15 @@ title: OSD1
 
 # OSD1
 
-OSD1 is an HTTP server for one SQLite database. Clients send native SQLite SQL. `POST /query` and `POST /raw` follow the Cloudflare D1 REST shape used by the official `cloudflare` TypeScript SDK.
+OSD1 is a small HTTP server for one SQLite file. You send ordinary SQLite SQL. The `/query` and `/raw` routes match the shape used by the official Cloudflare `cloudflare` TypeScript SDK.
 
-One OS thread owns the only SQLite connection and drains a bounded FIFO queue. Each request is one transaction. The process does not keep a client transaction open after the response. Litestream, when used, runs as a sidecar and is not linked into the binary.
+Each request is one transaction on one connection. One thread runs all of the SQL. If too many requests are already waiting, the server answers `429` and moves on.
 
-Source: [github.com/anuragsarkar97/osd1](https://github.com/anuragsarkar97/osd1). License: [MIT](https://github.com/anuragsarkar97/osd1/blob/main/LICENSE).
+Source: [SpringWinter-Research/OSD1](https://github.com/SpringWinter-Research/OSD1). License: [MIT](https://github.com/SpringWinter-Research/OSD1/blob/main/LICENSE).
 
-## Image
+## Run it
 
-Public registry: [`public.ecr.aws/c5l0h3s1/osd1`](https://gallery.ecr.aws/c5l0h3s1/osd1)
-
-| Tag | Digest | Platforms |
-| --- | --- | --- |
-| `latest`, `2026-11-06` | `sha256:8c36d25fe8f3b7b0aa8a0a4c9be1f5f917a0e4b5a450c50fc5a14db316c44d2c` | `linux/arm64`, `linux/amd64` |
+The public image is [`public.ecr.aws/c5l0h3s1/osd1`](https://gallery.ecr.aws/c5l0h3s1/osd1). Tags `latest` and `2026-11-06` are `linux/arm64` and `linux/amd64`.
 
 ```bash
 docker pull public.ecr.aws/c5l0h3s1/osd1:latest
@@ -28,20 +24,6 @@ docker run --rm -p 8080:8080 \
   -v osd1-data:/data \
   public.ecr.aws/c5l0h3s1/osd1:latest
 ```
-
-The process listens on `0.0.0.0:8080` and stores the database at `/data/osd1.db`. The image runs as uid `10001`. `docker pull` selects `linux/arm64` or `linux/amd64`. The image is Debian bookworm. A Trivy scan of the arm64 image reported 225 OS findings, including one critical `zlib` CVE. The amd64 image uses the same base. Details are in the [security scan](security-scan.md).
-
-Build the same image from the repo:
-
-```bash
-docker compose -f deploy/compose.yml up -d --build
-```
-
-Compose sets `OSD1_API_TOKEN` to `dev-token` when the variable is unset, and mounts a named volume at `/data`.
-
-## Query
-
-Health does not use the token and does not touch SQLite.
 
 ```bash
 curl -sS http://127.0.0.1:8080/health
@@ -57,9 +39,11 @@ curl -sS -H "Authorization: Bearer dev-token" -H "content-type: application/json
   http://127.0.0.1:8080/accounts/a/d1/database/b/query
 ```
 
-`/query` returns one JSON object per row. `/raw` returns `{ "columns", "rows" }`. The account id and database id in the path are ignored. OSD1 has one database file. Recorded request and response bodies are in the [API examples](api-examples.md).
+`/query` returns one JSON object per row. `/raw` returns column names and array rows. The account id and database id in the URL are ignored, because there is only one database. Health does not need the token.
 
-Official client (`cloudflare@4.5.0`):
+From the repo, `docker compose -f deploy/compose.yml up -d --build` does the same job and uses `dev-token` when you do not set one.
+
+A TypeScript client looks like this (`cloudflare@4.5.0`):
 
 ```js
 import Cloudflare from "cloudflare";
@@ -72,85 +56,98 @@ const client = new Cloudflare({
 
 for await (const row of client.d1.database.query(
   "00000000-0000-0000-0000-000000000001",
-  {
-    account_id: "023e105f4ecef8ad9ca31a8372d0c353",
-    sql: "SELECT 1 AS n",
-  },
+  { account_id: "023e105f4ecef8ad9ca31a8372d0c353", sql: "SELECT 1 AS n" },
 )) {
   console.log(row);
 }
 ```
 
-`node spike/sdk-compat.mjs` runs that client against a local binary. The last run printed `sdk-compat ok`. Where the server and the SDK differ is written down in [compatibility](compatibility.md).
+`node spike/sdk-compat.mjs` ran that client and printed `sdk-compat ok`. Where the server and the SDK differ is in [compatibility](compatibility.md).
 
-## HTTP
+## Performance
 
-| Status | Code | When |
+These numbers are from an Apple M4 on 6 Nov 2026. They are loopback reads of a release build. A busy disk, TLS, or a slow client will be lower. The raw logs are on the [benchmark](benchmark.md) page.
+
+**How many `SELECT 1` requests the server can take.** Keep-alive HTTP, no token. At 32 clients the rate stopped climbing, which means the SQL thread was full.
+
+| Clients | Requests/s |
+| ---: | ---: |
+| 1 | 25,467 |
+| 8 | 82,129 |
+| 16 | 102,234 |
+| 32 | 111,075 |
+
+SQLite alone on the same machine, with no HTTP:
+
+| What | Ops/s |
+| --- | ---: |
+| In-memory transaction, `SELECT 1` | 2,516,325 |
+| WAL file, `synchronous=FULL`, `SELECT 1` | 543,065 |
+| Indexed reads inside one transaction | 3,447,361 |
+
+**Four workloads, one client at a time.** Release binary, 4,000 indexed rows already loaded, 2,000 calls each. Latency is what the client saw. Memory is the high sample of the server process.
+
+| Workload | Mix | p50 | p95 | p99 | Requests/s | Memory |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Read-heavy | 95% indexed select, 5% insert | 0.17 ms | 0.49 ms | 0.78 ms | 2,335 | 5.8 MB |
+| Balanced | half select, half insert/update | 0.16 ms | 0.47 ms | 0.95 ms | 2,554 | 5.4 MB |
+| Write-heavy | 10% select, 90% insert/update | 0.14 ms | 0.48 ms | 1.64 ms | 2,568 | 4.8 MB |
+| Mixed | short selects, a 2,000-row scan every 20th call | 0.16 ms | 0.36 ms | 0.45 ms | 3,413 | 6.5 MB |
+
+Those four ran one after another in a single Python client, so they show latency for that client, not the 111k ceiling above. A separate debug build of 1,000 inserts and 1,000 point selects finished in 0.52 seconds (about 0.22 ms per insert and 0.28 ms per select).
+
+## Tests
+
+Run on the same day. `cargo test --workspace` passed: engine 11, HTTP 18, server 1, suite 9, types 5.
+
+| Area | Result |
+| --- | --- |
+| SQL | CRUD, DDL, joins, indexes, and a CTE |
+| Types | null, integers, floats, and text. Blob results come back as HTTP 400 |
+| Transactions | Commit, rollback, and a constraint failure. Client `BEGIN` / `COMMIT` / `ROLLBACK` are rejected |
+| Concurrency | 10, 100, and 500 clients at once, every inserted row present |
+| Queue | A full queue returns 429. A request that never finishes returns 504. The SQL thread is not cancelled mid-statement |
+| SDK | Official TypeScript client, `query` and `raw` |
+| Persistence | A row survived a container restart and a recreate. `/data` was mode 700, the database and WAL mode 600 |
+| Backup | Litestream restore returned the marker row and `PRAGMA integrity_check` was `ok` |
+| Recovery | A killed process kept committed rows. A deleted volume no longer has the table. A restore to a closed port fails and writes no file |
+| TLS | nginx on port 8443. Missing and wrong tokens are 401. The right token returns the row |
+| Fuzzing | Malformed bodies stay HTTP 400 or 413 |
+| Dependencies | `cargo audit` found no advisories in 77 crates |
+| Image scan | Trivy reported 225 Debian findings on the arm64 image: 85 low, 103 medium, 36 high, 1 critical (`zlib` CVE-2023-45853, will not fix) |
+
+Commands and the per-check notes are on the [testing](testing.md) page.
+
+## When something fails
+
+| You see | Meaning |
+| --- | --- |
+| 200 | The SQL ran |
+| 400, code 7500 | SQLite or the authorizer said no, or the JSON answer is over the size limit |
+| 400, code 7400 | The body, the SQL, or a parameter is malformed |
+| 401, code 10000 | Missing or wrong bearer token |
+| 413 | The body is over `OSD1_MAX_BODY_BYTES` (1 MiB). SQL does not run |
+| 429, code 10001 | The queue is full. `x-should-retry` is `false` |
+| 504, code 7500 | Still waiting after `OSD1_REQUEST_TIMEOUT_MS` (30 seconds). The statement keeps running |
+| 500, code 7500 | The SQL thread is gone |
+
+Leave the token empty and auth is off. Parameters can be null, text, integers, or finite floats.
+
+`BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `ATTACH`, `DETACH`, `writable_schema`, `load_extension`, `readfile`, and `writefile` are refused. Several statements in one request share the transaction, and a later failure rolls the whole request back.
+
+## Settings
+
+| Variable | Default | What it does |
 | --- | --- | --- |
-| 200 | | The statement ran |
-| 400 | 7500 | SQLite or the authorizer rejected the SQL, or the success JSON is larger than the response limit |
-| 400 | 7400 | The JSON body, SQL, or parameters are malformed |
-| 401 | 10000 | The bearer token is missing or wrong. An empty `OSD1_API_TOKEN` turns auth off |
-| 413 | | The body is larger than `OSD1_MAX_BODY_BYTES`. SQL does not run |
-| 429 | 10001 | The queue is full. The response includes `x-should-retry: false` |
-| 504 | 7500 | The queue wait plus SQL exceeded `OSD1_REQUEST_TIMEOUT_MS`. The response includes `x-should-retry: false`. SQLite is not interrupted |
-| 500 | 7500 | The SQL thread is gone |
+| `OSD1_DB_PATH` | `./data/osd1.db` | The database file. The image uses `/data/osd1.db` |
+| `OSD1_HTTP_ADDR` | `127.0.0.1:8080` | Listen address. The image uses `0.0.0.0:8080` |
+| `OSD1_API_TOKEN` | empty | Bearer token |
+| `OSD1_QUEUE_CAPACITY` | `64` | How many requests may wait |
+| `OSD1_MAX_BODY_BYTES` | 1 MiB | Largest request body |
+| `OSD1_MAX_RESPONSE_BYTES` | 1 MiB | Largest success JSON |
+| `OSD1_REQUEST_TIMEOUT_MS` | `30000` | `0` means wait forever |
+| `OSD1_SERVED_BY_COLO` | `LOC` | Copied into the result metadata |
 
-Parameters may be JSON null, strings, integers, or finite floats. Booleans, objects, and arrays are rejected. Blob results are rejected.
+A directory the server creates is mode `0700`. The database, WAL, and shared-memory files are mode `0600`. The token is redacted from the startup log line.
 
-`BEGIN`, `COMMIT`, `ROLLBACK`, and `SAVEPOINT` from client SQL are denied. `ATTACH`, `DETACH`, `PRAGMA writable_schema`, `load_extension`, `readfile`, and `writefile` are denied. Several statements in one request share one transaction: if a later statement fails, the request rolls back.
-
-## Configuration
-
-| Variable | Default | |
-| --- | --- | --- |
-| `OSD1_DB_PATH` | `./data/osd1.db` | The only database file |
-| `OSD1_HTTP_ADDR` | `127.0.0.1:8080` | The image sets `0.0.0.0:8080` |
-| `OSD1_API_TOKEN` | empty | Bearer token. Empty means no auth |
-| `OSD1_QUEUE_CAPACITY` | `64` | Waiting requests. Further requests get 429 |
-| `OSD1_SERVED_BY_COLO` | `LOC` | Copied into result meta |
-| `OSD1_MAX_BODY_BYTES` | `1048576` | |
-| `OSD1_MAX_RESPONSE_BYTES` | `1048576` | |
-| `OSD1_REQUEST_TIMEOUT_MS` | `30000` | `0` waits without a deadline |
-
-A new database directory is created mode `0700`. The database, WAL, and shared-memory files are mode `0600`. An existing parent directory is left as it is. The image creates `/data` as mode `0700` owned by uid `10001`. The listen line redacts the API token.
-
-TLS stops at a reverse proxy. `deploy/nginx-tls.conf` and `./scripts/tls-check.sh` are that setup. The OSD1 process stays on HTTP.
-
-## Server
-
-- One database file.
-- One OS thread executes SQL. Tokio worker threads never call SQLite.
-- That thread owns the only connection.
-- Requests wait on a bounded FIFO. A full queue returns 429 and does not block.
-- SQL is native SQLite. Parameters are bound with the SQLite bind API.
-- The SQLite authorizer accepts or rejects statements. The server does not decide that by scanning SQL text.
-- The on-disk format is upstream SQLite.
-
-On an Apple M4, a release build serving `SELECT 1` over keep-alive HTTP reached 111,075 requests/s with 32 clients, and 25,467 requests/s with one client. Sixteen clients reached 102,234 requests/s, so more clients had mostly stopped helping: the SQL thread was full. That is a loopback read on this Mac. Writes, TLS, and a Linux volume with a real flush are slower. The same machine, calling SQLite with no HTTP, committed a `synchronous=FULL` WAL transaction at 543,065/s. Measured runs are in the [benchmark](benchmark.md).
-
-## Backup
-
-Litestream replicates the database to an S3-compatible bucket. `./scripts/recovery.sh` inserts a row, deletes the primary files, restores them, and checks `PRAGMA integrity_check`. The last run exited 0 and the check returned `ok`. Steps and the recorded output are in [backup and restore](backup-restore.md).
-
-## Development
-
-```bash
-cargo test --workspace
-node spike/sdk-compat.mjs
-./scripts/profiles.sh
-```
-
-Docker checks, in this order because they all publish port 8080:
-
-```bash
-./scripts/persist.sh
-./scripts/tls-check.sh
-./scripts/recovery-cases.sh
-./scripts/recovery.sh
-./scripts/scan.sh
-```
-
-What each check covers, and the recorded results, is in [testing](testing.md). Running the image, including a restart that kept the volume, is in [operations](operations.md).
-
-Rust toolchain used for the recorded tests: 1.99.1. The workspace crates are `osd1-types`, `osd1-engine`, `osd1-http`, and `osd1-server`. The binary is `osd1`.
+Recorded requests are in the [API examples](api-examples.md). Running the image is in [operations](operations.md). Backup is in [backup and restore](backup-restore.md). The image scan is in the [security scan](security-scan.md).

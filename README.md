@@ -2,7 +2,7 @@
 
 OSD1 is an HTTP server for one SQLite database. You send native SQLite SQL. `/query` and `/raw` follow the Cloudflare D1 REST shape used by the official [`cloudflare`](https://www.npmjs.com/package/cloudflare) TypeScript SDK.
 
-[Documentation](https://anuragsarkar97.github.io/osd1/) · [Image](https://gallery.ecr.aws/c5l0h3s1/osd1) · [License: MIT](LICENSE)
+[Documentation](https://springwinter-research.github.io/OSD1/) · [Image](https://gallery.ecr.aws/c5l0h3s1/osd1) · [License: MIT](LICENSE)
 
 ## Quick start
 

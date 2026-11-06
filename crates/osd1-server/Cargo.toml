@@ -1,0 +1,15 @@
+[package]
+name = "osd1-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "osd1"
+path = "src/main.rs"
+
+[dependencies]
+osd1-engine = { workspace = true }
+osd1-http = { workspace = true }
+osd1-types = { workspace = true }

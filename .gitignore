@@ -1,0 +1,10 @@
+/target
+/data
+node_modules
+.env
+*.db
+*.db-wal
+*.db-shm
+spike/requests.json
+spike/spike-output.json
+spike/node_modules

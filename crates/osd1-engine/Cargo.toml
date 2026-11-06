@@ -1,0 +1,9 @@
+[package]
+name = "osd1-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+osd1-types = { workspace = true }

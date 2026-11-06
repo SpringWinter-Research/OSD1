@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/osd1-types",
+    "crates/osd1-engine",
+    "crates/osd1-http",
+    "crates/osd1-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+osd1-types = { path = "crates/osd1-types" }
+osd1-engine = { path = "crates/osd1-engine" }
+osd1-http = { path = "crates/osd1-http" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal", "net"] }
+axum = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

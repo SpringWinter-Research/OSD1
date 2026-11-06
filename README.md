@@ -4,7 +4,7 @@ OSD1 is an open-source HTTP server for one SQLite database. Clients send native 
 
 One OS thread owns the only SQLite connection and drains a bounded FIFO queue. A request is one transaction. The process does not keep a client transaction open after the response.
 
-Litestream replication is a separate sidecar, added after the API matches the SDK. See `docs/backup-restore.md` once that phase is in place.
+Litestream replication is a separate sidecar. See `docs/backup-restore.md`.
 
 ## Docs
 

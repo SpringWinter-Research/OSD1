@@ -1,0 +1,36 @@
+services:
+  minio:
+    # Docker Hub removed minio/minio. Silo is the S3-compatible server used here.
+    image: docker.io/pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+    profiles: ["backup"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+  minio-init:
+    image: docker.io/pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+    profiles: ["backup"]
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until mcli alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done
+        mcli mb -p local/osd1 || true
+
+  litestream:
+    image: litestream/litestream:0.5
+    profiles: ["backup"]
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    command: ["replicate", "-config", "/etc/litestream.yml"]
+    environment:
+      LITESTREAM_BUCKET: osd1
+      LITESTREAM_ENDPOINT: http://minio:9000
+      LITESTREAM_ACCESS_KEY_ID: minioadmin
+      LITESTREAM_SECRET_ACCESS_KEY: minioadmin
+    volumes:
+      - osd1-data:/data
+      - ./litestream.yml:/etc/litestream.yml:ro

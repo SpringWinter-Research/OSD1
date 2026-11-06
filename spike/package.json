@@ -1,0 +1,8 @@
+{
+  "name": "osd1-sdk-spike",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "cloudflare": "^4.5.0"
+  }
+}

@@ -3,44 +3,78 @@ title: OSD1
 description: One SQLite file behind an HTTP API. 111,075 requests per second on an Apple M4.
 ---
 
-<div class="poster">
-  <p class="kicker">One file, one thread</p>
+<div class="flex flex-col gap-6">
+  <span data-slot="badge" data-variant="default" class="inline-flex w-fit shrink-0 items-center justify-center rounded-full border border-transparent bg-primary px-2 py-0.5 text-xs font-medium whitespace-nowrap text-primary-foreground">One file, one thread</span>
   <h1>The database<br>is a file.</h1>
-  <p class="lede">OSD1 serves that file over HTTP. You send native SQLite SQL. The request shape matches Cloudflare D1, so the official TypeScript client can call it.</p>
-  <ul class="stats">
-    <li><strong>111,075</strong><span>requests/s at 32 clients</span></li>
-    <li><strong>6.5 MB</strong><span>peak resident memory</span></li>
-    <li><strong>0.14–0.17 ms</strong><span>p50, one Python client</span></li>
-  </ul>
-  <p class="actions">
-    <a class="button" href="benchmark.html">See the run</a>
-    <a class="button button-quiet" href="https://github.com/SpringWinter-Research/OSD1">Source</a>
-  </p>
+  <p class="max-w-2xl text-lg text-muted-foreground">OSD1 serves that file over HTTP. You send native SQLite SQL. The request shape matches Cloudflare D1, so the official TypeScript client can call it.</p>
+  <div class="grid gap-4 sm:grid-cols-3">
+    <div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+      <div data-slot="card-header" class="grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6">
+        <div data-slot="card-title" class="text-2xl leading-none font-semibold tabular-nums">111,075</div>
+        <div data-slot="card-description" class="text-sm text-muted-foreground">requests/s at 32 clients</div>
+      </div>
+    </div>
+    <div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+      <div data-slot="card-header" class="grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6">
+        <div data-slot="card-title" class="text-2xl leading-none font-semibold tabular-nums">6.5 MB</div>
+        <div data-slot="card-description" class="text-sm text-muted-foreground">peak resident memory</div>
+      </div>
+    </div>
+    <div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+      <div data-slot="card-header" class="grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6">
+        <div data-slot="card-title" class="text-2xl leading-none font-semibold tabular-nums">0.14–0.17 ms</div>
+        <div data-slot="card-description" class="text-sm text-muted-foreground">p50, one Python client</div>
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a data-slot="button" data-variant="default" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground no-underline transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" href="benchmark.html">See the run</a>
+    <a data-slot="button" data-variant="outline" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap text-foreground no-underline shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50" href="https://github.com/SpringWinter-Research/OSD1">Source</a>
+  </div>
   {% include scale-chart.html %}
 </div>
 
-<section class="split">
-  <article>
-    <p class="kicker">OSD1</p>
-    <h2>One writer.</h2>
-    <p>One SQLite file, one connection, one transaction per request, <code>synchronous=FULL</code>. The client already speaks the D1 HTTP API. 111,075 requests/s is where this laptop’s SQL thread filled up.</p>
-  </article>
-  <article>
-    <p class="kicker">Postgres</p>
-    <h2>Many sessions.</h2>
-    <p>Postgres is the server for concurrent sessions, roles, extensions, and its own protocol. Pooling and replication belong to that job. The numbers on this page are the OSD1 run from 6&nbsp;Nov&nbsp;2026.</p>
-  </article>
-</section>
+<div class="mt-8 grid gap-4 md:grid-cols-2">
+  <div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+    <div data-slot="card-header" class="grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6">
+      <span data-slot="badge" data-variant="outline" class="inline-flex w-fit items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">OSD1</span>
+      <div data-slot="card-title" class="text-2xl leading-none font-semibold">One writer.</div>
+    </div>
+    <div data-slot="card-content" class="px-6 text-sm text-muted-foreground">One SQLite file, one connection, one transaction per request, <code>synchronous=FULL</code>. The client already speaks the D1 HTTP API. 111,075 requests/s is where this laptop’s SQL thread filled up.</div>
+  </div>
+  <div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+    <div data-slot="card-header" class="grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6">
+      <span data-slot="badge" data-variant="outline" class="inline-flex w-fit items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">Postgres</span>
+      <div data-slot="card-title" class="text-2xl leading-none font-semibold">Many sessions.</div>
+    </div>
+    <div data-slot="card-content" class="px-6 text-sm text-muted-foreground">Postgres is the server for concurrent sessions, roles, extensions, and its own protocol. Pooling and replication belong to that job. The numbers on this page are the OSD1 run from 6&nbsp;Nov&nbsp;2026.</div>
+  </div>
+</div>
 
-<section>
-  <p class="kicker">Same laptop, no HTTP</p>
+<section class="mt-10">
+  <span data-slot="badge" data-variant="outline" class="inline-flex w-fit items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-foreground">Same laptop, no HTTP</span>
   <h2>What the file did alone.</h2>
-  <ul class="stats">
-    <li><strong>543,065</strong><span>WAL transactions/s, synchronous=FULL</span></li>
-    <li><strong>2,516,325</strong><span>in-memory transactions/s</span></li>
-    <li><strong>3,447,361</strong><span>indexed reads/s, one transaction</span></li>
-  </ul>
-  <p class="note">SQLite only, on the same Apple&nbsp;M4. These are not HTTP requests, and Postgres was not part of the run.</p>
+  <div class="mt-4 grid gap-4 sm:grid-cols-3">
+    <div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+      <div data-slot="card-header" class="grid auto-rows-min items-start gap-2 px-6">
+        <div data-slot="card-title" class="text-2xl leading-none font-semibold tabular-nums">543,065</div>
+        <div data-slot="card-description" class="text-sm text-muted-foreground">WAL transactions/s, synchronous=FULL</div>
+      </div>
+    </div>
+    <div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+      <div data-slot="card-header" class="grid auto-rows-min items-start gap-2 px-6">
+        <div data-slot="card-title" class="text-2xl leading-none font-semibold tabular-nums">2,516,325</div>
+        <div data-slot="card-description" class="text-sm text-muted-foreground">in-memory transactions/s</div>
+      </div>
+    </div>
+    <div data-slot="card" class="flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+      <div data-slot="card-header" class="grid auto-rows-min items-start gap-2 px-6">
+        <div data-slot="card-title" class="text-2xl leading-none font-semibold tabular-nums">3,447,361</div>
+        <div data-slot="card-description" class="text-sm text-muted-foreground">indexed reads/s, one transaction</div>
+      </div>
+    </div>
+  </div>
+  <p class="text-sm text-muted-foreground">SQLite only, on the same Apple&nbsp;M4. These are not HTTP requests, and Postgres was not part of the run.</p>
 </section>
 
 ## Quick start

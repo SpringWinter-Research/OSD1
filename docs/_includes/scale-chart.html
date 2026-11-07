@@ -1,26 +1,22 @@
-<figure class="chart">
-  <figcaption class="kicker">Requests per second</figcaption>
-  <div class="hbars" role="img" aria-label="1 client 25,467. 8 clients 82,129. 16 clients 102,234. 32 clients 111,075.">
-    <div class="hbar">
-      <span class="hbar-label">1 client</span>
-      <span class="hbar-track"><span class="hbar-fill" style="width:22.9%"></span></span>
-      <span class="hbar-value">25,467</span>
-    </div>
-    <div class="hbar">
-      <span class="hbar-label">8 clients</span>
-      <span class="hbar-track"><span class="hbar-fill" style="width:73.9%"></span></span>
-      <span class="hbar-value">82,129</span>
-    </div>
-    <div class="hbar">
-      <span class="hbar-label">16 clients</span>
-      <span class="hbar-track"><span class="hbar-fill" style="width:92%"></span></span>
-      <span class="hbar-value">102,234</span>
-    </div>
-    <div class="hbar">
-      <span class="hbar-label">32 clients</span>
-      <span class="hbar-track"><span class="hbar-fill is-max" style="width:100%"></span></span>
-      <span class="hbar-value">111,075</span>
-    </div>
+<div data-slot="card" class="my-6 flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm">
+  <div data-slot="card-header" class="@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6">
+    <div data-slot="card-title" class="leading-none font-semibold">Requests per second</div>
   </div>
-  <p class="note">SELECT&nbsp;1 over keep-alive HTTP. Release build, loopback, Apple&nbsp;M4, 6&nbsp;Nov&nbsp;2026. At 32&nbsp;clients the rate flattened: the SQL thread was full.</p>
-</figure>
+  <div data-slot="card-content" class="px-6">
+    <div class="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 text-sm" role="img" aria-label="1 client 25,467. 8 clients 82,129. 16 clients 102,234. 32 clients 111,075.">
+      <span>1 client</span>
+      <span class="block h-2 overflow-hidden rounded-full bg-muted"><span class="block h-full rounded-full bg-chart-1" style="width:22.9%"></span></span>
+      <span class="font-medium tabular-nums">25,467</span>
+      <span>8 clients</span>
+      <span class="block h-2 overflow-hidden rounded-full bg-muted"><span class="block h-full rounded-full bg-chart-1" style="width:73.9%"></span></span>
+      <span class="font-medium tabular-nums">82,129</span>
+      <span>16 clients</span>
+      <span class="block h-2 overflow-hidden rounded-full bg-muted"><span class="block h-full rounded-full bg-chart-1" style="width:92%"></span></span>
+      <span class="font-medium tabular-nums">102,234</span>
+      <span>32 clients</span>
+      <span class="block h-2 overflow-hidden rounded-full bg-muted"><span class="block h-full rounded-full bg-chart-1" style="width:100%"></span></span>
+      <span class="font-medium tabular-nums">111,075</span>
+    </div>
+    <p class="mt-4 text-sm text-muted-foreground">SELECT&nbsp;1 over keep-alive HTTP. Release build, loopback, Apple&nbsp;M4, 6&nbsp;Nov&nbsp;2026. At 32&nbsp;clients the rate flattened: the SQL thread was full.</p>
+  </div>
+</div>

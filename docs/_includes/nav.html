@@ -1,16 +1,26 @@
-<nav class="site-nav">
-  <div class="wrap nav-row">
-    <a class="brand" href="{{ '/' | relative_url }}">OSD1</a>
-    <div class="nav-links">
-      <a href="{{ '/api-examples.html' | relative_url }}">API</a>
-      <a href="{{ '/compatibility.html' | relative_url }}">SDK</a>
-      <a href="{{ '/operations.html' | relative_url }}">Operations</a>
-      <a href="{{ '/monitoring.html' | relative_url }}">Monitoring</a>
-      <a href="{{ '/backup-restore.html' | relative_url }}">Backup</a>
-      <a href="{{ '/benchmark.html' | relative_url }}">Benchmark</a>
-      <a href="{{ '/testing.html' | relative_url }}">Testing</a>
-      <a href="{{ '/security-scan.html' | relative_url }}">Security</a>
-      <a href="https://github.com/SpringWinter-Research/OSD1">Source</a>
-    </div>
+<header class="sticky top-0 z-50 w-full border-b bg-background">
+  <div class="mx-auto flex h-14 max-w-5xl items-center gap-2 px-4">
+    <a href="{{ '/' | relative_url }}" class="mr-2 text-sm font-semibold text-foreground no-underline">OSD1</a>
+    <nav aria-label="Documentation" data-slot="navigation-menu" data-viewport="false" class="group/navigation-menu relative flex max-w-max flex-1 items-center justify-start">
+      <ul data-slot="navigation-menu-list" class="group flex flex-1 list-none items-center justify-center gap-1">
+        <li data-slot="navigation-menu-item" class="relative">
+          <button type="button" id="docs-menu-trigger" data-slot="navigation-menu-trigger" aria-expanded="false" aria-controls="docs-menu" class="group inline-flex h-9 w-max items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium transition-[color,box-shadow] outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 data-[state=open]:bg-accent/50 data-[state=open]:text-accent-foreground data-[state=open]:hover:bg-accent data-[state=open]:focus:bg-accent">
+            Docs
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="relative top-[1px] ml-1 size-3 transition duration-300 group-data-[state=open]:rotate-180" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="docs-menu" data-slot="navigation-menu-content" hidden role="region" aria-label="Docs" class="absolute top-full left-0 z-50 mt-1.5 w-56 overflow-hidden rounded-md border bg-popover p-2 text-popover-foreground shadow">
+            <a data-slot="navigation-menu-link" class="flex flex-col gap-1 rounded-sm p-2 text-sm text-popover-foreground no-underline transition-all outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" href="{{ '/api-examples.html' | relative_url }}">API</a>
+            <a data-slot="navigation-menu-link" class="flex flex-col gap-1 rounded-sm p-2 text-sm text-popover-foreground no-underline transition-all outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" href="{{ '/compatibility.html' | relative_url }}">SDK</a>
+            <a data-slot="navigation-menu-link" class="flex flex-col gap-1 rounded-sm p-2 text-sm text-popover-foreground no-underline transition-all outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" href="{{ '/operations.html' | relative_url }}">Operations</a>
+            <a data-slot="navigation-menu-link" class="flex flex-col gap-1 rounded-sm p-2 text-sm text-popover-foreground no-underline transition-all outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" href="{{ '/monitoring.html' | relative_url }}">Monitoring</a>
+            <a data-slot="navigation-menu-link" class="flex flex-col gap-1 rounded-sm p-2 text-sm text-popover-foreground no-underline transition-all outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" href="{{ '/backup-restore.html' | relative_url }}">Backup</a>
+            <a data-slot="navigation-menu-link" class="flex flex-col gap-1 rounded-sm p-2 text-sm text-popover-foreground no-underline transition-all outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" href="{{ '/benchmark.html' | relative_url }}">Benchmark</a>
+            <a data-slot="navigation-menu-link" class="flex flex-col gap-1 rounded-sm p-2 text-sm text-popover-foreground no-underline transition-all outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" href="{{ '/testing.html' | relative_url }}">Testing</a>
+            <a data-slot="navigation-menu-link" class="flex flex-col gap-1 rounded-sm p-2 text-sm text-popover-foreground no-underline transition-all outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1" href="{{ '/security-scan.html' | relative_url }}">Security</a>
+          </div>
+        </li>
+      </ul>
+    </nav>
+    <a data-slot="button" data-variant="outline" data-size="default" class="ml-auto inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap text-foreground no-underline shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50" href="https://github.com/SpringWinter-Research/OSD1">Source</a>
   </div>
-</nav>
+</header>

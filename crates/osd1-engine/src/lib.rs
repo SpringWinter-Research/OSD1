@@ -1178,6 +1178,9 @@ fn map_sqlite_error(error: rusqlite::Error, deny_code: &AtomicU8) -> SqlError {
 }
 
 #[cfg(test)]
+mod fuzz;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use osd1_types::{ResultShape, SqlError};

@@ -34,12 +34,18 @@ The sections under this table say which file or script covers each case.
 | SDK | Official `cloudflare` TypeScript client, `query` and `raw` | `node spike/sdk-compat.mjs` |
 | Performance | p50, p95, p99, throughput, max RSS | `./scripts/profiles.sh`, also `./scripts/bench.sh` |
 | Recovery | Process kill, missing volume, failed restore | `process_kill_keeps_committed_rows_and_hides_the_token`, `./scripts/recovery-cases.sh` |
-| Fuzzing | Malformed API bodies stay client errors (desirable) | `malformed_input_stays_a_client_error` |
+| Fuzzing | Malformed API bodies stay client errors. A seeded mix of search, indexes, transaction scripts, inserts, updates, and deletes matches a reference SQLite | `malformed_input_stays_a_client_error`, `fuzzy_mix_matches_reference_sqlite` |
 
 Rust tests:
 
 ```bash
 cargo test --workspace
+```
+
+A longer fuzz run uses one seed. The default test already runs seeds 1, 7, 13, and 42.
+
+```bash
+OSD1_FUZZ_SEED=1 OSD1_FUZZ_STEPS=2000 cargo test -p osd1-engine fuzzy_mix_matches_reference_sqlite
 ```
 
 The suite lives in `crates/osd1-server/tests/suite.rs`. Engine and HTTP tests live next to the code they check.

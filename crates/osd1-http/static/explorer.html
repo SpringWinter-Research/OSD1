@@ -1,424 +1,1943 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OSD1</title>
-  <style>
-    :root {
-      --bg: #f6f3ec;
-      --ink: #1a1814;
-      --muted: #5c564c;
-      --line: #e4ddd0;
-      --paper: #fffdf8;
-      --accent: #0e6b54;
-      --serif: "Iowan Old Style", Palatino, Georgia, serif;
-      --sans: "Avenir Next", "Segoe UI", sans-serif;
-      --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-      color-scheme: light;
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style id="osd1-css">
+/*! tailwindcss v4.1.16 | MIT License | https://tailwindcss.com */
+@layer properties;
+@layer theme, base, components, utilities;
+@layer theme {
+  :root, :host {
+    --font-sans: var(--font-sans);
+    --font-serif: var(--font-serif);
+    --font-mono: var(--font-mono);
+    --color-white: #fff;
+    --spacing: 0.25rem;
+    --container-md: 28rem;
+    --container-lg: 32rem;
+    --container-2xl: 42rem;
+    --container-4xl: 56rem;
+    --container-5xl: 64rem;
+    --text-xs: 0.75rem;
+    --text-xs--line-height: calc(1 / 0.75);
+    --text-sm: 0.875rem;
+    --text-sm--line-height: calc(1.25 / 0.875);
+    --text-base: 1rem;
+    --text-base--line-height: calc(1.5 / 1);
+    --text-xl: 1.25rem;
+    --text-xl--line-height: calc(1.75 / 1.25);
+    --text-2xl: 1.5rem;
+    --text-2xl--line-height: calc(2 / 1.5);
+    --text-5xl: 3rem;
+    --text-5xl--line-height: 1;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --tracking-tight: -0.025em;
+    --tracking-normal: 0em;
+    --leading-relaxed: 1.625;
+    --shadow-2xs: var(--shadow-2xs);
+    --shadow-xs: var(--shadow-xs);
+    --shadow-sm: var(--shadow-sm);
+    --shadow-md: var(--shadow-md);
+    --shadow-lg: var(--shadow-lg);
+    --shadow-xl: var(--shadow-xl);
+    --shadow-2xl: var(--shadow-2xl);
+    --default-transition-duration: 150ms;
+    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    --default-font-family: var(--font-sans);
+    --default-mono-font-family: var(--font-mono);
+    --shadow: var(--shadow);
+  }
+}
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
+  html, :host {
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+    tab-size: 4;
+    font-family: var(--default-font-family, ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");
+    font-feature-settings: var(--default-font-feature-settings, normal);
+    font-variation-settings: var(--default-font-variation-settings, normal);
+    -webkit-tap-highlight-color: transparent;
+  }
+  hr {
+    height: 0;
+    color: inherit;
+    border-top-width: 1px;
+  }
+  abbr:where([title]) {
+    -webkit-text-decoration: underline dotted;
+    text-decoration: underline dotted;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+  a {
+    color: inherit;
+    -webkit-text-decoration: inherit;
+    text-decoration: inherit;
+  }
+  b, strong {
+    font-weight: bolder;
+  }
+  code, kbd, samp, pre {
+    font-family: var(--default-mono-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+    font-feature-settings: var(--default-mono-font-feature-settings, normal);
+    font-variation-settings: var(--default-mono-font-variation-settings, normal);
+    font-size: 1em;
+  }
+  small {
+    font-size: 80%;
+  }
+  sub, sup {
+    font-size: 75%;
+    line-height: 0;
+    position: relative;
+    vertical-align: baseline;
+  }
+  sub {
+    bottom: -0.25em;
+  }
+  sup {
+    top: -0.5em;
+  }
+  table {
+    text-indent: 0;
+    border-color: inherit;
+    border-collapse: collapse;
+  }
+  :-moz-focusring {
+    outline: auto;
+  }
+  progress {
+    vertical-align: baseline;
+  }
+  summary {
+    display: list-item;
+  }
+  ol, ul, menu {
+    list-style: none;
+  }
+  img, svg, video, canvas, audio, iframe, embed, object {
+    display: block;
+    vertical-align: middle;
+  }
+  img, video {
+    max-width: 100%;
+    height: auto;
+  }
+  button, input, select, optgroup, textarea, ::file-selector-button {
+    font: inherit;
+    font-feature-settings: inherit;
+    font-variation-settings: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    border-radius: 0;
+    background-color: transparent;
+    opacity: 1;
+  }
+  :where(select:is([multiple], [size])) optgroup {
+    font-weight: bolder;
+  }
+  :where(select:is([multiple], [size])) optgroup option {
+    padding-inline-start: 20px;
+  }
+  ::file-selector-button {
+    margin-inline-end: 4px;
+  }
+  ::placeholder {
+    opacity: 1;
+  }
+  @supports (not (-webkit-appearance: -apple-pay-button))  or (contain-intrinsic-size: 1px) {
+    ::placeholder {
+      color: currentcolor;
+      @supports (color: color-mix(in lab, red, red)) {
+        color: color-mix(in oklab, currentcolor 50%, transparent);
+      }
     }
-
-    * { box-sizing: border-box; }
-
-    [hidden] { display: none !important; }
-
-    html, body { height: 100%; }
-
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: var(--sans);
-      font-size: 16px;
-      line-height: 1.4;
-      font-feature-settings: "kern" 1, "liga" 1;
-      text-rendering: optimizeLegibility;
+  }
+  textarea {
+    resize: vertical;
+  }
+  ::-webkit-search-decoration {
+    -webkit-appearance: none;
+  }
+  ::-webkit-date-and-time-value {
+    min-height: 1lh;
+    text-align: inherit;
+  }
+  ::-webkit-datetime-edit {
+    display: inline-flex;
+  }
+  ::-webkit-datetime-edit-fields-wrapper {
+    padding: 0;
+  }
+  ::-webkit-datetime-edit, ::-webkit-datetime-edit-year-field, ::-webkit-datetime-edit-month-field, ::-webkit-datetime-edit-day-field, ::-webkit-datetime-edit-hour-field, ::-webkit-datetime-edit-minute-field, ::-webkit-datetime-edit-second-field, ::-webkit-datetime-edit-millisecond-field, ::-webkit-datetime-edit-meridiem-field {
+    padding-block: 0;
+  }
+  ::-webkit-calendar-picker-indicator {
+    line-height: 1;
+  }
+  :-moz-ui-invalid {
+    box-shadow: none;
+  }
+  button, input:where([type="button"], [type="reset"], [type="submit"]), ::file-selector-button {
+    appearance: button;
+  }
+  ::-webkit-inner-spin-button, ::-webkit-outer-spin-button {
+    height: auto;
+  }
+  [hidden]:where(:not([hidden="until-found"])) {
+    display: none !important;
+  }
+}
+@layer utilities {
+  .visible {
+    visibility: visible;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+  .absolute {
+    position: absolute;
+  }
+  .fixed {
+    position: fixed;
+  }
+  .relative {
+    position: relative;
+  }
+  .top-full {
+    top: 100%;
+  }
+  .left-0 {
+    left: calc(0.25rem * 0);
+  }
+  .z-50 {
+    z-index: 50;
+  }
+  .order-last {
+    order: 9999;
+  }
+  .m-0 {
+    margin: calc(0.25rem * 0);
+  }
+  .mt-1 {
+    margin-top: calc(0.25rem * 1);
+  }
+  .mt-2 {
+    margin-top: calc(0.25rem * 2);
+  }
+  .mt-3 {
+    margin-top: calc(0.25rem * 3);
+  }
+  .mt-4 {
+    margin-top: calc(0.25rem * 4);
+  }
+  .mt-5 {
+    margin-top: calc(0.25rem * 5);
+  }
+  .mt-6 {
+    margin-top: calc(0.25rem * 6);
+  }
+  .mr-auto {
+    margin-right: auto;
+  }
+  .mb-3 {
+    margin-bottom: calc(0.25rem * 3);
+  }
+  .mb-4 {
+    margin-bottom: calc(0.25rem * 4);
+  }
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  .block {
+    display: block;
+  }
+  .flex {
+    display: flex;
+  }
+  .grid {
+    display: grid;
+  }
+  .hidden {
+    display: none;
+  }
+  .inline-flex {
+    display: inline-flex;
+  }
+  .table {
+    display: table;
+  }
+  .table-cell {
+    display: table-cell;
+  }
+  .table-row {
+    display: table-row;
+  }
+  .field-sizing-content {
+    field-sizing: content;
+  }
+  .size-4 {
+    width: calc(0.25rem * 4);
+    height: calc(0.25rem * 4);
+  }
+  .size-6 {
+    width: calc(0.25rem * 6);
+    height: calc(0.25rem * 6);
+  }
+  .h-8 {
+    height: calc(0.25rem * 8);
+  }
+  .h-9 {
+    height: calc(0.25rem * 9);
+  }
+  .h-10 {
+    height: calc(0.25rem * 10);
+  }
+  .h-14 {
+    height: calc(0.25rem * 14);
+  }
+  .h-\[calc\(100\%-1px\)\] {
+    height: calc(100% - 1px);
+  }
+  .h-dvh {
+    height: 100dvh;
+  }
+  .h-full {
+    height: 100%;
+  }
+  .max-h-60 {
+    max-height: calc(0.25rem * 60);
+  }
+  .max-h-64 {
+    max-height: calc(0.25rem * 64);
+  }
+  .max-h-80 {
+    max-height: calc(0.25rem * 80);
+  }
+  .min-h-0 {
+    min-height: calc(0.25rem * 0);
+  }
+  .min-h-14 {
+    min-height: calc(0.25rem * 14);
+  }
+  .min-h-64 {
+    min-height: calc(0.25rem * 64);
+  }
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
+  .min-h-full {
+    min-height: 100%;
+  }
+  .w-72 {
+    width: calc(0.25rem * 72);
+  }
+  .w-fit {
+    width: fit-content;
+  }
+  .w-full {
+    width: 100%;
+  }
+  .max-w-2xl {
+    max-width: var(--container-2xl);
+  }
+  .max-w-4xl {
+    max-width: var(--container-4xl);
+  }
+  .max-w-5xl {
+    max-width: var(--container-5xl);
+  }
+  .max-w-20 {
+    max-width: calc(0.25rem * 20);
+  }
+  .max-w-lg {
+    max-width: var(--container-lg);
+  }
+  .max-w-md {
+    max-width: var(--container-md);
+  }
+  .min-w-0 {
+    min-width: calc(0.25rem * 0);
+  }
+  .min-w-28 {
+    min-width: calc(0.25rem * 28);
+  }
+  .min-w-full {
+    min-width: 100%;
+  }
+  .flex-1 {
+    flex: 1;
+  }
+  .flex-shrink {
+    flex-shrink: 1;
+  }
+  .shrink-0 {
+    flex-shrink: 0;
+  }
+  .caption-bottom {
+    caption-side: bottom;
+  }
+  .border-collapse {
+    border-collapse: collapse;
+  }
+  .transform {
+    transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
+  }
+  .cursor-default {
+    cursor: default;
+  }
+  .cursor-pointer {
+    cursor: pointer;
+  }
+  .resize {
+    resize: both;
+  }
+  .appearance-none {
+    appearance: none;
+  }
+  .flex-col {
+    flex-direction: column;
+  }
+  .flex-wrap {
+    flex-wrap: wrap;
+  }
+  .place-items-center {
+    place-items: center;
+  }
+  .items-baseline {
+    align-items: baseline;
+  }
+  .items-center {
+    align-items: center;
+  }
+  .justify-between {
+    justify-content: space-between;
+  }
+  .justify-center {
+    justify-content: center;
+  }
+  .justify-end {
+    justify-content: flex-end;
+  }
+  .gap-0 {
+    gap: calc(0.25rem * 0);
+  }
+  .gap-1 {
+    gap: calc(0.25rem * 1);
+  }
+  .gap-1\.5 {
+    gap: calc(0.25rem * 1.5);
+  }
+  .gap-2 {
+    gap: calc(0.25rem * 2);
+  }
+  .gap-3 {
+    gap: calc(0.25rem * 3);
+  }
+  .gap-4 {
+    gap: calc(0.25rem * 4);
+  }
+  .gap-6 {
+    gap: calc(0.25rem * 6);
+  }
+  .gap-10 {
+    gap: calc(0.25rem * 10);
+  }
+  .space-y-4 {
+    :where(& > :not(:last-child)) {
+      --tw-space-y-reverse: 0;
+      margin-block-start: calc(calc(0.25rem * 4) * var(--tw-space-y-reverse));
+      margin-block-end: calc(calc(0.25rem * 4) * calc(1 - var(--tw-space-y-reverse)));
     }
-
-    body[data-busy="1"] { cursor: progress; }
-
-    button, input, select, textarea { font: inherit; color: inherit; }
-
-    button {
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-radius: 2px;
-      padding: 0.35rem 0.7rem;
-      cursor: pointer;
+  }
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .overflow-auto {
+    overflow: auto;
+  }
+  .overflow-hidden {
+    overflow: hidden;
+  }
+  .overflow-visible {
+    overflow: visible;
+  }
+  .overflow-x-auto {
+    overflow-x: auto;
+  }
+  .overflow-x-hidden {
+    overflow-x: hidden;
+  }
+  .overflow-y-auto {
+    overflow-y: auto;
+  }
+  .rounded-\[4px\] {
+    border-radius: 4px;
+  }
+  .rounded-full {
+    border-radius: calc(infinity * 1px);
+  }
+  .rounded-lg {
+    border-radius: var(--radius);
+  }
+  .rounded-md {
+    border-radius: calc(var(--radius) - 2px);
+  }
+  .rounded-none {
+    border-radius: 0;
+  }
+  .rounded-sm {
+    border-radius: calc(var(--radius) - 4px);
+  }
+  .rounded-xl {
+    border-radius: calc(var(--radius) + 4px);
+  }
+  .border {
+    border-style: var(--tw-border-style);
+    border-width: 1px;
+  }
+  .border-0 {
+    border-style: var(--tw-border-style);
+    border-width: 0px;
+  }
+  .border-t {
+    border-top-style: var(--tw-border-style);
+    border-top-width: 1px;
+  }
+  .border-b {
+    border-bottom-style: var(--tw-border-style);
+    border-bottom-width: 1px;
+  }
+  .border-border {
+    border-color: var(--border);
+  }
+  .border-destructive {
+    border-color: var(--destructive);
+  }
+  .border-destructive\/50 {
+    border-color: var(--destructive);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--destructive) 50%, transparent);
     }
-
-    button.primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: var(--paper);
+  }
+  .border-input {
+    border-color: var(--input);
+  }
+  .border-transparent {
+    border-color: transparent;
+  }
+  .bg-background {
+    background-color: var(--background);
+  }
+  .bg-card {
+    background-color: var(--card);
+  }
+  .bg-destructive {
+    background-color: var(--destructive);
+  }
+  .bg-muted {
+    background-color: var(--muted);
+  }
+  .bg-popover {
+    background-color: var(--popover);
+  }
+  .bg-primary {
+    background-color: var(--primary);
+  }
+  .bg-sidebar {
+    background-color: var(--sidebar);
+  }
+  .bg-transparent {
+    background-color: transparent;
+  }
+  .p-0 {
+    padding: calc(0.25rem * 0);
+  }
+  .p-1 {
+    padding: calc(0.25rem * 1);
+  }
+  .p-2 {
+    padding: calc(0.25rem * 2);
+  }
+  .p-3 {
+    padding: calc(0.25rem * 3);
+  }
+  .p-4 {
+    padding: calc(0.25rem * 4);
+  }
+  .p-5 {
+    padding: calc(0.25rem * 5);
+  }
+  .p-6 {
+    padding: calc(0.25rem * 6);
+  }
+  .p-\[3px\] {
+    padding: 3px;
+  }
+  .px-2 {
+    padding-inline: calc(0.25rem * 2);
+  }
+  .px-3 {
+    padding-inline: calc(0.25rem * 3);
+  }
+  .px-4 {
+    padding-inline: calc(0.25rem * 4);
+  }
+  .px-6 {
+    padding-inline: calc(0.25rem * 6);
+  }
+  .py-0 {
+    padding-block: calc(0.25rem * 0);
+  }
+  .py-0\.5 {
+    padding-block: calc(0.25rem * 0.5);
+  }
+  .py-1 {
+    padding-block: calc(0.25rem * 1);
+  }
+  .py-1\.5 {
+    padding-block: calc(0.25rem * 1.5);
+  }
+  .py-2 {
+    padding-block: calc(0.25rem * 2);
+  }
+  .py-3 {
+    padding-block: calc(0.25rem * 3);
+  }
+  .py-6 {
+    padding-block: calc(0.25rem * 6);
+  }
+  .py-16 {
+    padding-block: calc(0.25rem * 16);
+  }
+  .pt-3 {
+    padding-top: calc(0.25rem * 3);
+  }
+  .pt-4 {
+    padding-top: calc(0.25rem * 4);
+  }
+  .pr-1 {
+    padding-right: calc(0.25rem * 1);
+  }
+  .pr-2 {
+    padding-right: calc(0.25rem * 2);
+  }
+  .pr-8 {
+    padding-right: calc(0.25rem * 8);
+  }
+  .pb-4 {
+    padding-bottom: calc(0.25rem * 4);
+  }
+  .pl-2 {
+    padding-left: calc(0.25rem * 2);
+  }
+  .text-center {
+    text-align: center;
+  }
+  .text-left {
+    text-align: left;
+  }
+  .text-right {
+    text-align: right;
+  }
+  .align-middle {
+    vertical-align: middle;
+  }
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+  .font-sans {
+    font-family: var(--font-sans);
+  }
+  .text-2xl {
+    font-size: var(--text-2xl);
+    line-height: var(--tw-leading, var(--text-2xl--line-height));
+  }
+  .text-base {
+    font-size: var(--text-base);
+    line-height: var(--tw-leading, var(--text-base--line-height));
+  }
+  .text-sm {
+    font-size: var(--text-sm);
+    line-height: var(--tw-leading, var(--text-sm--line-height));
+  }
+  .text-xl {
+    font-size: var(--text-xl);
+    line-height: var(--tw-leading, var(--text-xl--line-height));
+  }
+  .text-xs {
+    font-size: var(--text-xs);
+    line-height: var(--tw-leading, var(--text-xs--line-height));
+  }
+  .leading-none {
+    --tw-leading: 1;
+    line-height: 1;
+  }
+  .font-medium {
+    --tw-font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-medium);
+  }
+  .font-semibold {
+    --tw-font-weight: var(--font-weight-semibold);
+    font-weight: var(--font-weight-semibold);
+  }
+  .tracking-tight {
+    --tw-tracking: var(--tracking-tight);
+    letter-spacing: var(--tracking-tight);
+  }
+  .whitespace-nowrap {
+    white-space: nowrap;
+  }
+  .text-card-foreground {
+    color: var(--card-foreground);
+  }
+  .text-destructive {
+    color: var(--destructive);
+  }
+  .text-foreground {
+    color: var(--foreground);
+  }
+  .text-foreground\/60 {
+    color: var(--foreground);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklab, var(--foreground) 60%, transparent);
     }
-
-    button.active {
-      border-color: var(--accent);
-      color: var(--accent);
+  }
+  .text-muted-foreground {
+    color: var(--muted-foreground);
+  }
+  .text-popover-foreground {
+    color: var(--popover-foreground);
+  }
+  .text-primary {
+    color: var(--primary);
+  }
+  .text-primary-foreground {
+    color: var(--primary-foreground);
+  }
+  .text-sidebar-foreground {
+    color: var(--sidebar-foreground);
+  }
+  .text-sidebar-foreground\/70 {
+    color: var(--sidebar-foreground);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent);
     }
-
-    button:focus-visible,
-    input:focus-visible,
-    select:focus-visible,
-    textarea:focus-visible {
-      outline: 2px solid var(--accent);
+  }
+  .text-white {
+    color: var(--color-white);
+  }
+  .tabular-nums {
+    --tw-numeric-spacing: tabular-nums;
+    font-variant-numeric: var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,);
+  }
+  .underline {
+    text-decoration-line: underline;
+  }
+  .antialiased {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .opacity-50 {
+    opacity: 50%;
+  }
+  .shadow-md {
+    --tw-shadow: var(--shadow-md);
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+  .shadow-none {
+    --tw-shadow: 0 0 #0000;
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+  .shadow-sm {
+    --tw-shadow: var(--shadow-sm);
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+  .shadow-xs {
+    --tw-shadow: var(--shadow-xs);
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+  .ring-1 {
+    --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+  .ring-foreground\/10 {
+    --tw-ring-color: var(--foreground);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-ring-color: color-mix(in oklab, var(--foreground) 10%, transparent);
+    }
+  }
+  .ring-sidebar-ring {
+    --tw-ring-color: var(--sidebar-ring);
+  }
+  .outline-hidden {
+    --tw-outline-style: none;
+    outline-style: none;
+    @media (forced-colors: active) {
+      outline: 2px solid transparent;
       outline-offset: 2px;
     }
-
-    input, select, textarea {
-      width: 100%;
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-radius: 2px;
-      padding: 0.4rem 0.55rem;
+  }
+  .outline {
+    outline-style: var(--tw-outline-style);
+    outline-width: 1px;
+  }
+  .transition-\[color\,box-shadow\] {
+    transition-property: color,box-shadow;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
+  .transition-\[width\,height\,padding\] {
+    transition-property: width,height,padding;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
+  .transition-all {
+    transition-property: all;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
+  .transition-colors {
+    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
+  .outline-none {
+    --tw-outline-style: none;
+    outline-style: none;
+  }
+  .select-none {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .selection\:bg-primary {
+    & *::selection {
+      background-color: var(--primary);
     }
-
-    textarea {
-      font-family: var(--mono);
-      font-size: 0.9375rem;
-      min-height: 9rem;
-      resize: vertical;
+    &::selection {
+      background-color: var(--primary);
     }
-
-    h1, h2, h3 {
-      font-family: var(--serif);
-      font-weight: 500;
-      letter-spacing: -0.02em;
-      line-height: 1.15;
-      hyphens: none;
-      margin: 0;
+  }
+  .selection\:text-primary-foreground {
+    & *::selection {
+      color: var(--primary-foreground);
     }
-
-    h1 { font-size: 1.75rem; }
-    h2 { font-size: 1.35rem; }
-    h3 { font-size: 1.05rem; margin-top: 1.25rem; }
-
-    p { margin: 0.4rem 0; }
-
-    .hint {
-      color: var(--muted);
-      font-size: 0.9375rem;
-      max-width: 62ch;
+    &::selection {
+      color: var(--primary-foreground);
     }
-
-    .error { color: #8c2f24; max-width: 62ch; }
-
-    code {
-      font-family: var(--mono);
-      font-size: 0.9em;
+  }
+  .placeholder\:text-muted-foreground {
+    &::placeholder {
+      color: var(--muted-foreground);
     }
-
-    .login {
-      min-height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1.5rem 1rem;
+  }
+  .first\:mt-0 {
+    &:first-child {
+      margin-top: calc(0.25rem * 0);
     }
-
-    .card {
-      width: min(28rem, 100%);
-      background: var(--paper);
-      border: 1px solid var(--line);
-      padding: 1.5rem 1.35rem 1.35rem;
+  }
+  .last\:border-b-0 {
+    &:last-child {
+      border-bottom-style: var(--tw-border-style);
+      border-bottom-width: 0px;
     }
-
-    .card h1 { margin-bottom: 0.2rem; }
-
-    label {
-      display: block;
-      margin-top: 1rem;
+  }
+  .checked\:border-primary {
+    &:checked {
+      border-color: var(--primary);
     }
-
-    label span,
-    .side-label {
-      display: block;
-      margin-bottom: 0.3rem;
-      color: var(--muted);
-      font-size: 0.75rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+  }
+  .checked\:bg-primary {
+    &:checked {
+      background-color: var(--primary);
     }
-
-    label span.caption {
-      text-transform: none;
-      letter-spacing: 0;
-      font-size: 0.875rem;
-    }
-
-    .card button { margin-top: 1rem; }
-
-    #app {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      padding: 0.7rem 1rem;
-      border-bottom: 1px solid var(--line);
-      background: var(--bg);
-    }
-
-    .brand {
-      font-family: var(--serif);
-      font-size: 1.25rem;
-      margin-right: auto;
-    }
-
-    .badge {
-      font-size: 0.75rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--accent);
-    }
-
-    .shell {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-    }
-
-    aside {
-      width: 16rem;
-      flex: none;
-      border-right: 1px solid var(--line);
-      overflow: auto;
-      padding: 0.85rem 0.75rem 1.25rem;
-    }
-
-    .side-head {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      margin-bottom: 0.6rem;
-    }
-
-    .side-head .side-label { margin: 0 auto 0 0; }
-
-    #table-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-
-    #table-list button {
-      width: 100%;
-      display: flex;
-      justify-content: space-between;
-      gap: 0.5rem;
-      text-align: left;
-      border: 0;
-      background: transparent;
-      padding: 0.35rem 0.4rem;
-    }
-
-    #table-list button.active { background: var(--paper); }
-
-    .kind { color: var(--muted); font-size: 0.8rem; }
-
-    #main {
-      flex: 1;
-      min-width: 0;
-      overflow: auto;
-      padding: 1rem 1.15rem 2rem;
-    }
-
-    .table-head {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      gap: 0.5rem 0.7rem;
-      margin-bottom: 0.8rem;
-    }
-
-    .table-head h2 { margin-right: auto; }
-
-    .grid-scroll { overflow-x: auto; margin-top: 0.4rem; }
-
-    table.grid {
-      width: 100%;
-      border-collapse: collapse;
-      font-variant-numeric: tabular-nums lining-nums;
-      font-size: 0.9375rem;
-    }
-
-    table.grid th,
-    table.grid td {
-      text-align: left;
-      padding: 0.45rem 0.75rem;
-      vertical-align: top;
-      white-space: pre-wrap;
-      max-width: 28rem;
-    }
-
-    table.grid th {
-      border-bottom: 1px solid var(--line);
-      font-size: 0.8125rem;
-      font-weight: 600;
-      color: var(--muted);
-    }
-
-    table.grid td.num { text-align: right; font-family: var(--mono); }
-
-    table.grid td.null { color: var(--muted); font-style: italic; }
-
-    .pager {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      margin: 0.75rem 0 1rem;
-    }
-
-    #insert-form, #create-form {
-      max-width: 36rem;
-      margin-top: 1rem;
-    }
-
-    .col-row {
-      display: grid;
-      grid-template-columns: 1.4fr 0.8fr auto auto;
-      gap: 0.4rem;
-      align-items: center;
-      margin-bottom: 0.4rem;
-    }
-
-    .pk {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      margin: 0;
-      white-space: nowrap;
-      font-size: 0.875rem;
-    }
-
-    .pk input { width: auto; }
-
-    .actions { display: flex; gap: 0.5rem; margin-top: 0.8rem; }
-
-    .sr {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
-    @media (max-width: 720px) {
-      .shell { flex-direction: column; }
-      aside {
-        width: auto;
-        max-height: 14rem;
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
+  }
+  .hover\:bg-accent {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--accent);
       }
-      .col-row { grid-template-columns: 1fr; }
     }
+  }
+  .hover\:bg-destructive\/10 {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--destructive) 10%, transparent);
+        }
+      }
+    }
+  }
+  .hover\:bg-destructive\/90 {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--destructive) 90%, transparent);
+        }
+      }
+    }
+  }
+  .hover\:bg-muted\/50 {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--muted);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+        }
+      }
+    }
+  }
+  .hover\:bg-primary\/90 {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--primary);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--primary) 90%, transparent);
+        }
+      }
+    }
+  }
+  .hover\:bg-sidebar-accent {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--sidebar-accent);
+      }
+    }
+  }
+  .hover\:text-accent-foreground {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--accent-foreground);
+      }
+    }
+  }
+  .hover\:text-destructive {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--destructive);
+      }
+    }
+  }
+  .hover\:text-foreground {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--foreground);
+      }
+    }
+  }
+  .hover\:text-sidebar-accent-foreground {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--sidebar-accent-foreground);
+      }
+    }
+  }
+  .focus\:bg-accent {
+    &:focus {
+      background-color: var(--accent);
+    }
+  }
+  .focus\:text-accent-foreground {
+    &:focus {
+      color: var(--accent-foreground);
+    }
+  }
+  .focus-visible\:border-ring {
+    &:focus-visible {
+      border-color: var(--ring);
+    }
+  }
+  .focus-visible\:ring-0 {
+    &:focus-visible {
+      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(0px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    }
+  }
+  .focus-visible\:ring-2 {
+    &:focus-visible {
+      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    }
+  }
+  .focus-visible\:ring-\[3px\] {
+    &:focus-visible {
+      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    }
+  }
+  .focus-visible\:ring-destructive\/20 {
+    &:focus-visible {
+      --tw-ring-color: var(--destructive);
+      @supports (color: color-mix(in lab, red, red)) {
+        --tw-ring-color: color-mix(in oklab, var(--destructive) 20%, transparent);
+      }
+    }
+  }
+  .focus-visible\:ring-ring\/50 {
+    &:focus-visible {
+      --tw-ring-color: var(--ring);
+      @supports (color: color-mix(in lab, red, red)) {
+        --tw-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
+      }
+    }
+  }
+  .focus-visible\:outline-1 {
+    &:focus-visible {
+      outline-style: var(--tw-outline-style);
+      outline-width: 1px;
+    }
+  }
+  .focus-visible\:outline-ring {
+    &:focus-visible {
+      outline-color: var(--ring);
+    }
+  }
+  .active\:bg-sidebar-accent {
+    &:active {
+      background-color: var(--sidebar-accent);
+    }
+  }
+  .active\:text-sidebar-accent-foreground {
+    &:active {
+      color: var(--sidebar-accent-foreground);
+    }
+  }
+  .disabled\:pointer-events-none {
+    &:disabled {
+      pointer-events: none;
+    }
+  }
+  .disabled\:cursor-not-allowed {
+    &:disabled {
+      cursor: not-allowed;
+    }
+  }
+  .disabled\:opacity-50 {
+    &:disabled {
+      opacity: 50%;
+    }
+  }
+  .has-\[\[data-slot\=input-group-control\]\:focus-visible\]\:border-ring {
+    &:has(*:is([data-slot=input-group-control]:focus-visible)) {
+      border-color: var(--ring);
+    }
+  }
+  .has-\[\[data-slot\=input-group-control\]\:focus-visible\]\:ring-\[3px\] {
+    &:has(*:is([data-slot=input-group-control]:focus-visible)) {
+      --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    }
+  }
+  .has-\[\[data-slot\=input-group-control\]\:focus-visible\]\:ring-ring\/50 {
+    &:has(*:is([data-slot=input-group-control]:focus-visible)) {
+      --tw-ring-color: var(--ring);
+      @supports (color: color-mix(in lab, red, red)) {
+        --tw-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
+      }
+    }
+  }
+  .data-highlighted\:bg-accent {
+    &[data-highlighted] {
+      background-color: var(--accent);
+    }
+  }
+  .data-highlighted\:text-accent-foreground {
+    &[data-highlighted] {
+      color: var(--accent-foreground);
+    }
+  }
+  .data-\[active\=true\]\:bg-sidebar-accent {
+    &[data-active="true"] {
+      background-color: var(--sidebar-accent);
+    }
+  }
+  .data-\[active\=true\]\:font-medium {
+    &[data-active="true"] {
+      --tw-font-weight: var(--font-weight-medium);
+      font-weight: var(--font-weight-medium);
+    }
+  }
+  .data-\[active\=true\]\:text-sidebar-accent-foreground {
+    &[data-active="true"] {
+      color: var(--sidebar-accent-foreground);
+    }
+  }
+  .data-\[placeholder\]\:text-muted-foreground {
+    &[data-placeholder] {
+      color: var(--muted-foreground);
+    }
+  }
+  .data-\[size\=default\]\:h-9 {
+    &[data-size="default"] {
+      height: calc(0.25rem * 9);
+    }
+  }
+  .data-\[state\=active\]\:bg-background {
+    &[data-state="active"] {
+      background-color: var(--background);
+    }
+  }
+  .data-\[state\=active\]\:text-foreground {
+    &[data-state="active"] {
+      color: var(--foreground);
+    }
+  }
+  .data-\[state\=active\]\:shadow-sm {
+    &[data-state="active"] {
+      --tw-shadow: var(--shadow-sm);
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+    }
+  }
+  .data-\[state\=checked\]\:bg-accent {
+    &[data-state="checked"] {
+      background-color: var(--accent);
+    }
+  }
+  .md\:ml-auto {
+    @media (width >= 48rem) {
+      margin-left: auto;
+    }
+  }
+  .md\:max-h-none {
+    @media (width >= 48rem) {
+      max-height: none;
+    }
+  }
+  .md\:w-72 {
+    @media (width >= 48rem) {
+      width: calc(0.25rem * 72);
+    }
+  }
+  .md\:grid-cols-\[minmax\(0\,1\.2fr\)_minmax\(0\,1fr\)_auto_auto\] {
+    @media (width >= 48rem) {
+      grid-template-columns: minmax(0,1.2fr) minmax(0,1fr) auto auto;
+    }
+  }
+  .md\:grid-cols-\[minmax\(0\,1fr\)_9rem_auto\] {
+    @media (width >= 48rem) {
+      grid-template-columns: minmax(0,1fr) 9rem auto;
+    }
+  }
+  .md\:flex-row {
+    @media (width >= 48rem) {
+      flex-direction: row;
+    }
+  }
+  .md\:border-r {
+    @media (width >= 48rem) {
+      border-right-style: var(--tw-border-style);
+      border-right-width: 1px;
+    }
+  }
+  .md\:border-b-0 {
+    @media (width >= 48rem) {
+      border-bottom-style: var(--tw-border-style);
+      border-bottom-width: 0px;
+    }
+  }
+  .md\:p-6 {
+    @media (width >= 48rem) {
+      padding: calc(0.25rem * 6);
+    }
+  }
+  .md\:text-sm {
+    @media (width >= 48rem) {
+      font-size: var(--text-sm);
+      line-height: var(--tw-leading, var(--text-sm--line-height));
+    }
+  }
+  .dark\:border-input {
+    &:is(.dark *) {
+      border-color: var(--input);
+    }
+  }
+  .dark\:bg-destructive\/60 {
+    &:is(.dark *) {
+      background-color: var(--destructive);
+      @supports (color: color-mix(in lab, red, red)) {
+        background-color: color-mix(in oklab, var(--destructive) 60%, transparent);
+      }
+    }
+  }
+  .dark\:bg-input\/30 {
+    &:is(.dark *) {
+      background-color: var(--input);
+      @supports (color: color-mix(in lab, red, red)) {
+        background-color: color-mix(in oklab, var(--input) 30%, transparent);
+      }
+    }
+  }
+  .dark\:bg-transparent {
+    &:is(.dark *) {
+      background-color: transparent;
+    }
+  }
+  .dark\:text-muted-foreground {
+    &:is(.dark *) {
+      color: var(--muted-foreground);
+    }
+  }
+  .dark\:hover\:bg-accent\/50 {
+    &:is(.dark *) {
+      &:hover {
+        @media (hover: hover) {
+          background-color: var(--accent);
+          @supports (color: color-mix(in lab, red, red)) {
+            background-color: color-mix(in oklab, var(--accent) 50%, transparent);
+          }
+        }
+      }
+    }
+  }
+  .dark\:hover\:bg-input\/50 {
+    &:is(.dark *) {
+      &:hover {
+        @media (hover: hover) {
+          background-color: var(--input);
+          @supports (color: color-mix(in lab, red, red)) {
+            background-color: color-mix(in oklab, var(--input) 50%, transparent);
+          }
+        }
+      }
+    }
+  }
+  .dark\:hover\:text-foreground {
+    &:is(.dark *) {
+      &:hover {
+        @media (hover: hover) {
+          color: var(--foreground);
+        }
+      }
+    }
+  }
+  .dark\:focus-visible\:ring-destructive\/40 {
+    &:is(.dark *) {
+      &:focus-visible {
+        --tw-ring-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          --tw-ring-color: color-mix(in oklab, var(--destructive) 40%, transparent);
+        }
+      }
+    }
+  }
+  .dark\:data-\[state\=active\]\:border-input {
+    &:is(.dark *) {
+      &[data-state="active"] {
+        border-color: var(--input);
+      }
+    }
+  }
+  .dark\:data-\[state\=active\]\:bg-input\/30 {
+    &:is(.dark *) {
+      &[data-state="active"] {
+        background-color: var(--input);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--input) 30%, transparent);
+        }
+      }
+    }
+  }
+  .dark\:data-\[state\=active\]\:text-foreground {
+    &:is(.dark *) {
+      &[data-state="active"] {
+        color: var(--foreground);
+      }
+    }
+  }
+  .\[\&_svg\]\:pointer-events-none {
+    & svg {
+      pointer-events: none;
+    }
+  }
+  .\[\&_svg\]\:size-4 {
+    & svg {
+      width: calc(0.25rem * 4);
+      height: calc(0.25rem * 4);
+    }
+  }
+  .\[\&_svg\]\:shrink-0 {
+    & svg {
+      flex-shrink: 0;
+    }
+  }
+  .\[\&_svg\:not\(\[class\*\=\'size-\'\]\)\]\:size-4 {
+    & svg:not([class*='size-']) {
+      width: calc(0.25rem * 4);
+      height: calc(0.25rem * 4);
+    }
+  }
+  .\[\&_svg\:not\(\[class\*\=\'text-\'\]\)\]\:text-muted-foreground {
+    & svg:not([class*='text-']) {
+      color: var(--muted-foreground);
+    }
+  }
+  .\[\&_tr\]\:border-b {
+    & tr {
+      border-bottom-style: var(--tw-border-style);
+      border-bottom-width: 1px;
+    }
+  }
+  .\[\&_tr\:last-child\]\:border-0 {
+    & tr:last-child {
+      border-style: var(--tw-border-style);
+      border-width: 0px;
+    }
+  }
+  .\[\&\>span\:last-child\]\:truncate {
+    &>span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}
+:root {
+  --background: oklch(0 0 0);
+  --foreground: oklch(1.0000 0 0);
+  --card: oklch(0.1684 0 0);
+  --card-foreground: oklch(1.0000 0 0);
+  --popover: oklch(0.1684 0 0);
+  --popover-foreground: oklch(1.0000 0 0);
+  --primary: oklch(0.8141 0.2609 142.5342);
+  --primary-foreground: oklch(0.1684 0 0);
+  --secondary: oklch(0.2858 0.0036 286.1693);
+  --secondary-foreground: oklch(1.0000 0 0);
+  --muted: oklch(0.2230 0.0038 286.0840);
+  --muted-foreground: oklch(0.8230 0.0385 134.1394);
+  --accent: oklch(0.2230 0.0038 286.0840);
+  --accent-foreground: oklch(1.0000 0 0);
+  --destructive: oklch(0.6717 0.2204 37.7568);
+  --destructive-foreground: oklch(1.0000 0 0);
+  --border: oklch(0.2742 0.0111 278.1296);
+  --input: oklch(0.2230 0.0038 286.0840);
+  --ring: oklch(0.8141 0.2609 142.5342);
+  --chart-1: oklch(0.8141 0.2609 142.5342);
+  --chart-2: oklch(0.7711 0.1689 62.0881);
+  --chart-3: oklch(0.7066 0.1735 45.7092);
+  --chart-4: oklch(0.6717 0.2204 37.7568);
+  --chart-5: oklch(0.5450 0.0207 135.0186);
+  --sidebar: oklch(0 0 0);
+  --sidebar-foreground: oklch(1.0000 0 0);
+  --sidebar-primary: oklch(0.8141 0.2609 142.5342);
+  --sidebar-primary-foreground: oklch(0.1684 0 0);
+  --sidebar-accent: oklch(0.2230 0.0038 286.0840);
+  --sidebar-accent-foreground: oklch(1.0000 0 0);
+  --sidebar-border: oklch(0.2742 0.0111 278.1296);
+  --sidebar-ring: oklch(0.8141 0.2609 142.5342);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius: 0.25rem;
+  --shadow-x: 0;
+  --shadow-y: 1px;
+  --shadow-blur: 24px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.08;
+  --shadow-color: #000000;
+  --shadow-2xs: 0 1px 24px 0px hsl(0 0% 0% / 0.04);
+  --shadow-xs: 0 1px 24px 0px hsl(0 0% 0% / 0.04);
+  --shadow-sm: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 1px 2px -1px hsl(0 0% 0% / 0.08);
+  --shadow: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 1px 2px -1px hsl(0 0% 0% / 0.08);
+  --shadow-md: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 2px 4px -1px hsl(0 0% 0% / 0.08);
+  --shadow-lg: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 4px 6px -1px hsl(0 0% 0% / 0.08);
+  --shadow-xl: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 8px 10px -1px hsl(0 0% 0% / 0.08);
+  --shadow-2xl: 0 1px 24px 0px hsl(0 0% 0% / 0.20);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+.dark {
+  --background: oklch(0 0 0);
+  --foreground: oklch(1.0000 0 0);
+  --card: oklch(0.1684 0 0);
+  --card-foreground: oklch(1.0000 0 0);
+  --popover: oklch(0.1684 0 0);
+  --popover-foreground: oklch(1.0000 0 0);
+  --primary: oklch(0.8141 0.2609 142.5342);
+  --primary-foreground: oklch(0.1684 0 0);
+  --secondary: oklch(0.2858 0.0036 286.1693);
+  --secondary-foreground: oklch(1.0000 0 0);
+  --muted: oklch(0.2230 0.0038 286.0840);
+  --muted-foreground: oklch(0.8230 0.0385 134.1394);
+  --accent: oklch(0.2230 0.0038 286.0840);
+  --accent-foreground: oklch(1.0000 0 0);
+  --destructive: oklch(0.6717 0.2204 37.7568);
+  --destructive-foreground: oklch(1.0000 0 0);
+  --border: oklch(0.2742 0.0111 278.1296);
+  --input: oklch(0.2230 0.0038 286.0840);
+  --ring: oklch(0.8141 0.2609 142.5342);
+  --chart-1: oklch(0.8141 0.2609 142.5342);
+  --chart-2: oklch(0.7711 0.1689 62.0881);
+  --chart-3: oklch(0.7066 0.1735 45.7092);
+  --chart-4: oklch(0.6717 0.2204 37.7568);
+  --chart-5: oklch(0.5450 0.0207 135.0186);
+  --sidebar: oklch(0 0 0);
+  --sidebar-foreground: oklch(1.0000 0 0);
+  --sidebar-primary: oklch(0.8141 0.2609 142.5342);
+  --sidebar-primary-foreground: oklch(0.1684 0 0);
+  --sidebar-accent: oklch(0.2230 0.0038 286.0840);
+  --sidebar-accent-foreground: oklch(1.0000 0 0);
+  --sidebar-border: oklch(0.2742 0.0111 278.1296);
+  --sidebar-ring: oklch(0.8141 0.2609 142.5342);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius: 0.25rem;
+  --shadow-x: 0;
+  --shadow-y: 1px;
+  --shadow-blur: 24px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.08;
+  --shadow-color: #000000;
+  --shadow-2xs: 0 1px 24px 0px hsl(0 0% 0% / 0.04);
+  --shadow-xs: 0 1px 24px 0px hsl(0 0% 0% / 0.04);
+  --shadow-sm: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 1px 2px -1px hsl(0 0% 0% / 0.08);
+  --shadow: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 1px 2px -1px hsl(0 0% 0% / 0.08);
+  --shadow-md: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 2px 4px -1px hsl(0 0% 0% / 0.08);
+  --shadow-lg: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 4px 6px -1px hsl(0 0% 0% / 0.08);
+  --shadow-xl: 0 1px 24px 0px hsl(0 0% 0% / 0.08), 0 8px 10px -1px hsl(0 0% 0% / 0.08);
+  --shadow-2xl: 0 1px 24px 0px hsl(0 0% 0% / 0.20);
+}
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: var(--ring);
+    @supports (color: color-mix(in lab, red, red)) {
+      outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+    }
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "kern" 1, "liga" 1;
+    text-rendering: optimizeLegibility;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  body[data-busy="1"] {
+    cursor: progress;
+  }
+  input[data-slot="checkbox"] {
+    appearance: none;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 0.75rem;
+  }
+  input[data-slot="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141414' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  }
+}
+@layer components {
+  #panel-graph {
+    min-height: 100%;
+  }
+  #graph-board {
+    position: relative;
+    min-height: 100%;
+    background-image: radial-gradient(circle, var(--foreground) 1.15px, transparent 1.25px);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-image: radial-gradient(circle, color-mix(in oklch, var(--foreground) 18%, transparent) 1.15px, transparent 1.25px);
+    }
+    background-size: 24px 24px;
+  }
+  .fk-cols {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 11rem;
+    min-height: 24rem;
+    padding: 1.5rem 2.5rem 2.5rem;
+  }
+  .fk-stack {
+    display: flex;
+    width: 18rem;
+    flex: none;
+    flex-direction: column;
+    gap: 2.25rem;
+  }
+  .fk-card {
+    overflow: visible;
+  }
+  .fk-card table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .fk-name {
+    position: relative;
+    width: 42%;
+  }
+  .fk-extra {
+    position: relative;
+  }
+  .fk-handle {
+    position: absolute;
+    z-index: 3;
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 2px solid var(--card);
+    border-radius: 999px;
+    background: var(--foreground);
+    pointer-events: none;
+  }
+  .fk-handle.left {
+    top: 50%;
+    left: -0.42rem;
+    transform: translateY(-50%);
+  }
+  .fk-handle.right {
+    top: 50%;
+    right: -0.42rem;
+    transform: translateY(-50%);
+  }
+  .fk-svg {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    left: 0;
+    overflow: visible;
+    color: var(--foreground);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklch, var(--foreground) 42%, transparent);
+    }
+    pointer-events: none;
+  }
+  .fk-svg .fk-edge {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+  }
+  .fk-svg text {
+    fill: var(--muted-foreground);
+    font-family: var(--font-sans);
+    font-size: 11px;
+  }
+  .fk-label-bg {
+    fill: var(--background);
+  }
+}
+@property --tw-rotate-x {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-rotate-y {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-rotate-z {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-skew-x {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-skew-y {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-space-y-reverse {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0;
+}
+@property --tw-border-style {
+  syntax: "*";
+  inherits: false;
+  initial-value: solid;
+}
+@property --tw-leading {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-font-weight {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-tracking {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-ordinal {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-slashed-zero {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-numeric-figure {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-numeric-spacing {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-numeric-fraction {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-shadow-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-shadow-alpha {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+@property --tw-inset-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-inset-shadow-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-inset-shadow-alpha {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+@property --tw-ring-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-ring-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-inset-ring-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-inset-ring-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-ring-inset {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-ring-offset-width {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --tw-ring-offset-color {
+  syntax: "*";
+  inherits: false;
+  initial-value: #fff;
+}
+@property --tw-ring-offset-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-outline-style {
+  syntax: "*";
+  inherits: false;
+  initial-value: solid;
+}
+@layer properties {
+  @supports ((-webkit-hyphens: none) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color:rgb(from red r g b)))) {
+    *, ::before, ::after, ::backdrop {
+      --tw-rotate-x: initial;
+      --tw-rotate-y: initial;
+      --tw-rotate-z: initial;
+      --tw-skew-x: initial;
+      --tw-skew-y: initial;
+      --tw-space-y-reverse: 0;
+      --tw-border-style: solid;
+      --tw-leading: initial;
+      --tw-font-weight: initial;
+      --tw-tracking: initial;
+      --tw-ordinal: initial;
+      --tw-slashed-zero: initial;
+      --tw-numeric-figure: initial;
+      --tw-numeric-spacing: initial;
+      --tw-numeric-fraction: initial;
+      --tw-shadow: 0 0 #0000;
+      --tw-shadow-color: initial;
+      --tw-shadow-alpha: 100%;
+      --tw-inset-shadow: 0 0 #0000;
+      --tw-inset-shadow-color: initial;
+      --tw-inset-shadow-alpha: 100%;
+      --tw-ring-color: initial;
+      --tw-ring-shadow: 0 0 #0000;
+      --tw-inset-ring-color: initial;
+      --tw-inset-ring-shadow: 0 0 #0000;
+      --tw-ring-inset: initial;
+      --tw-ring-offset-width: 0px;
+      --tw-ring-offset-color: #fff;
+      --tw-ring-offset-shadow: 0 0 #0000;
+      --tw-outline-style: solid;
+    }
+  }
+}
+
   </style>
 </head>
-<body>
-  <noscript><p>This page needs JavaScript.</p></noscript>
+<body class="min-h-dvh bg-background font-sans text-foreground antialiased">
+  <noscript><p class="p-6 text-sm">This page needs JavaScript.</p></noscript>
 
-  <main id="login" class="login">
-    <form id="login-form" class="card">
-      <h1>OSD1</h1>
-      <p class="hint">Table explorer</p>
-      <label for="token"><span>API token</span></label>
-      <input id="token" name="token" type="password" autocomplete="current-password">
-      <p class="hint">Use <code>OSD1_API_TOKEN</code>, or leave this blank when the server has no token. The token stays in this tab.</p>
-      <button class="primary" type="submit">Continue</button>
-      <p id="login-error" class="error" role="alert" hidden></p>
+  <main id="login" class="grid min-h-dvh place-items-center p-6">
+    <form id="login-form" data-slot="card" class="flex w-full max-w-md flex-col gap-6 rounded-xl border bg-card px-6 py-6 text-card-foreground shadow-sm">
+      <h1 data-slot="card-title" class="text-2xl leading-none font-semibold tracking-tight">OSD1</h1>
+      <div class="grid gap-2">
+        <label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none" for="token">API token</label>
+        <input id="token" data-slot="input" name="token" type="password" autocomplete="current-password" class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">
+      </div>
+      <button data-slot="button" data-variant="default" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50" type="submit">Continue</button>
+      <p id="login-error" class="rounded-lg border border-destructive/50 px-4 py-3 text-sm text-destructive" role="alert" hidden></p>
     </form>
   </main>
 
-  <div id="app" hidden>
-    <header>
-      <div class="brand">OSD1</div>
-      <span id="badge" class="badge" hidden></span>
-      <button type="button" id="sql-tab">SQL</button>
-      <button type="button" id="sign-out">Sign out</button>
+  <div id="app" class="flex h-dvh flex-col" hidden>
+    <header class="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b bg-background px-4 py-2">
+      <div class="mr-auto flex items-center gap-2">
+        <span class="text-base font-semibold tracking-tight">OSD1</span>
+      </div>
+      <span id="badge" data-slot="badge" data-variant="outline" class="inline-flex w-fit shrink-0 items-center justify-center rounded-full border border-border px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground" hidden></span>
+      <div data-slot="tabs" data-orientation="horizontal" class="group/tabs">
+        <div data-slot="tabs-list" data-variant="default" role="tablist" class="group/tabs-list inline-flex h-9 w-fit items-center justify-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+          <button type="button" id="graph-tab" data-slot="tabs-trigger" data-state="inactive" role="tab" class="relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:text-muted-foreground dark:hover:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 dark:data-[state=active]:text-foreground">Graph</button>
+          <button type="button" id="sql-tab" data-slot="tabs-trigger" data-state="inactive" role="tab" class="relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:text-muted-foreground dark:hover:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 dark:data-[state=active]:text-foreground">SQL</button>
+        </div>
+      </div>
+      <button type="button" id="sign-out" data-slot="button" data-variant="ghost" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-accent/50">Sign out</button>
     </header>
-    <div class="shell">
-      <aside>
-        <div class="side-head">
-          <span class="side-label">Tables</span>
-          <button type="button" id="new-table">New table</button>
-          <button type="button" id="refresh">Refresh</button>
+    <div class="flex min-h-0 flex-1 flex-col md:flex-row">
+      <aside data-slot="sidebar" class="flex max-h-64 w-full shrink-0 flex-col border-b bg-sidebar text-sidebar-foreground md:max-h-none md:w-72 md:border-r md:border-b-0">
+        <div data-slot="sidebar-header" class="flex flex-col gap-2 p-2">
+          <div data-slot="sidebar-group-label" class="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70">Tables</div>
+          <div class="flex flex-wrap items-center gap-2 px-2">
+            <button type="button" id="new-table" data-slot="button" data-variant="default" data-size="sm" class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50">New</button>
+            <button type="button" id="new-index" data-slot="button" data-variant="outline" data-size="sm" class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border bg-background px-3 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50">Index</button>
+            <button type="button" id="refresh" data-slot="button" data-variant="ghost" data-size="sm" class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-accent/50">Refresh</button>
+          </div>
         </div>
-        <ul id="table-list"></ul>
-        <p class="hint">Each write is one transaction. BEGIN and ATTACH are rejected.</p>
+        <div data-slot="sidebar-content" class="flex min-h-0 flex-1 flex-col overflow-auto">
+          <ul id="table-list" data-slot="sidebar-menu" class="flex w-full min-w-0 flex-col gap-1 p-2"></ul>
+        </div>
       </aside>
-      <section id="main">
-        <p id="banner" class="error" role="alert" hidden></p>
-        <p id="status" class="hint" hidden></p>
+      <section id="main" data-slot="sidebar-inset" class="relative flex min-w-0 flex-1 flex-col overflow-auto bg-background p-4 md:p-6">
+        <p id="banner" class="mb-4 rounded-lg border border-destructive/50 px-4 py-3 text-sm text-destructive" role="alert" hidden></p>
+        <p id="status" class="mb-3 text-sm text-muted-foreground" hidden></p>
 
-        <div id="panel-empty">
-          <p>Select a table, or create one.</p>
+        <div id="panel-empty"></div>
+
+        <div id="panel-create" class="max-w-2xl" hidden>
+          <h2 class="text-2xl font-semibold tracking-tight">New table</h2>
+          <form id="create-form" class="mt-6 grid gap-4">
+            <div class="grid gap-2">
+              <label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none" for="create-name">Name</label>
+              <input id="create-name" data-slot="input" autocomplete="off" spellcheck="false" class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">
+            </div>
+            <div id="create-columns" class="grid gap-2"></div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="add-column" data-slot="button" data-variant="outline" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50">Add column</button>
+              <button data-slot="button" data-variant="default" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50" type="submit">Create table</button>
+            </div>
+          </form>
         </div>
 
-        <div id="panel-create" hidden>
-          <h2>New table</h2>
-          <form id="create-form">
-            <label for="create-name"><span>Name</span></label>
-            <input id="create-name" autocomplete="off" spellcheck="false">
-            <div id="create-columns"></div>
-            <div class="actions">
-              <button type="button" id="add-column">Add column</button>
-              <button class="primary" type="submit">Create table</button>
+        <div id="panel-index" class="max-w-2xl" hidden>
+          <h2 class="text-2xl font-semibold tracking-tight">New index</h2>
+          <p id="index-empty" class="mt-3 text-sm text-muted-foreground" hidden>Create a table first.</p>
+          <form id="index-form" class="mt-6 grid gap-4">
+            <div class="grid gap-2">
+              <label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none" for="index-table-trigger">Table</label>
+              <div id="index-table" data-slot="select" data-value="" class="relative">
+                <button type="button" id="index-table-trigger" data-slot="select-trigger" data-size="default" data-placeholder="" aria-haspopup="listbox" aria-expanded="false" class="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground data-[size=default]:h-9 dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground">
+                  <span data-slot="select-value" class="line-clamp-1">Table</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 opacity-50" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div data-slot="select-content" role="listbox" hidden class="absolute top-full left-0 z-50 mt-1 max-h-60 min-w-full overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"></div>
+              </div>
             </div>
-            <p class="hint">One primary key is optional. Defaults, checks, and extra keys belong in the SQL box.</p>
+            <div class="grid gap-2">
+              <label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none" for="index-name">Name</label>
+              <input id="index-name" data-slot="input" autocomplete="off" spellcheck="false" class="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50">
+            </div>
+            <label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none" for="index-unique">
+              <input id="index-unique" data-slot="checkbox" type="checkbox" class="size-4 shrink-0 appearance-none rounded-[4px] border border-input shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30 checked:border-primary checked:bg-primary">
+              Unique
+            </label>
+            <div id="index-columns" class="grid gap-2"></div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="add-index-column" data-slot="button" data-variant="outline" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:border-input dark:bg-input/30 dark:hover:bg-input/50">Add column</button>
+              <button data-slot="button" data-variant="default" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50" type="submit">Create index</button>
+            </div>
           </form>
         </div>
 
         <div id="panel-table" hidden>
-          <div class="table-head">
-            <h2 id="table-title"></h2>
-            <span id="table-kind" class="kind"></span>
-            <button type="button" id="show-rows">Rows</button>
-            <button type="button" id="show-structure">Structure</button>
-            <button type="button" id="drop">Drop table</button>
+          <div class="mb-4 flex flex-wrap items-center gap-3 border-b pb-4">
+            <h2 id="table-title" class="font-mono text-xl font-semibold tracking-tight"></h2>
+            <span id="table-kind" data-slot="badge" data-variant="outline" class="inline-flex w-fit shrink-0 items-center justify-center rounded-full border border-border px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground"></span>
+            <div data-slot="tabs" data-orientation="horizontal" class="group/tabs">
+              <div data-slot="tabs-list" data-variant="default" role="tablist" class="group/tabs-list inline-flex h-9 w-fit items-center justify-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+                <button type="button" id="show-rows" data-slot="tabs-trigger" data-state="inactive" role="tab" class="relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:text-muted-foreground dark:hover:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 dark:data-[state=active]:text-foreground">Rows</button>
+                <button type="button" id="show-structure" data-slot="tabs-trigger" data-state="inactive" role="tab" class="relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:text-muted-foreground dark:hover:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 dark:data-[state=active]:text-foreground">Structure</button>
+              </div>
+            </div>
+            <button type="button" id="drop" data-slot="button" data-variant="destructive" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium whitespace-nowrap text-white transition-all outline-none hover:bg-destructive/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-destructive/20 disabled:pointer-events-none disabled:opacity-50 md:ml-auto dark:bg-destructive/60 dark:focus-visible:ring-destructive/40">Drop table</button>
           </div>
           <div id="grid-wrap"></div>
-          <div id="pager" class="pager"></div>
-          <form id="insert-form"></form>
+          <div id="pager" class="mt-4 flex items-center gap-2"></div>
+          <form id="insert-form" class="mt-6 grid max-w-lg gap-4 border-t pt-4"></form>
           <div id="structure" hidden></div>
         </div>
 
         <div id="panel-sql" hidden>
-          <h2>SQL</h2>
-          <form id="sql-form">
-            <label for="sql"><span class="sr">SQL</span></label>
-            <textarea id="sql" spellcheck="false"></textarea>
-            <div class="actions">
-              <button class="primary" type="submit">Run</button>
+          <form id="sql-form" class="grid max-w-4xl gap-3">
+            <label data-slot="label" class="sr-only" for="sql">SQL</label>
+            <textarea id="sql" data-slot="textarea" spellcheck="false" class="flex field-sizing-content min-h-64 w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"></textarea>
+            <div class="flex justify-end">
+              <button data-slot="button" data-variant="default" data-size="default" class="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50" type="submit">Run</button>
             </div>
-            <p class="hint">Command or Control plus Enter. Each write is one transaction. BEGIN and ATTACH are rejected.</p>
           </form>
-          <div id="sql-results"></div>
+          <div id="sql-results" class="mt-6"></div>
+        </div>
+
+        <div id="panel-graph" class="min-h-full flex-1" hidden>
+          <div id="graph-board"></div>
         </div>
       </section>
     </div>
   </div>
 
   <template id="column-row">
-    <div class="col-row">
-      <input class="col-name" autocomplete="off" spellcheck="false" placeholder="column" aria-label="Column name">
-      <select class="col-type" aria-label="Column type">
-        <option>INTEGER</option>
-        <option>TEXT</option>
-        <option>REAL</option>
-        <option>BLOB</option>
-      </select>
-      <label class="pk"><input class="col-pk" type="checkbox"> Primary key</label>
-      <button type="button" class="remove">Remove</button>
+    <div class="col-row grid items-center gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_auto]">
+      <input class="col-name h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50" data-slot="input" autocomplete="off" spellcheck="false" placeholder="column" aria-label="Column name">
+      <div data-slot="combobox" data-state="closed" class="relative min-w-0">
+        <div data-slot="input-group" role="group" class="group/input-group relative flex h-9 w-full min-w-0 items-center rounded-md border border-input shadow-xs outline-none dark:bg-input/30 has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-[3px] has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50">
+          <input class="col-type h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 py-1 text-base shadow-none outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground focus-visible:ring-0 md:text-sm dark:bg-transparent" data-slot="input-group-control" value="INTEGER" autocomplete="off" spellcheck="false" placeholder="INTEGER" aria-label="Column type" aria-autocomplete="list" aria-expanded="false">
+          <div data-slot="input-group-addon" data-align="inline-end" class="order-last flex items-center pr-1">
+            <button type="button" data-slot="combobox-trigger" aria-label="Column types" aria-haspopup="listbox" aria-expanded="false" class="inline-flex size-6 items-center justify-center rounded-md p-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-slot="combobox-trigger-icon" class="size-4 opacity-50" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div data-slot="combobox-content" role="listbox" hidden class="z-50 max-h-80 overflow-y-auto rounded-md bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10">
+          <div data-slot="combobox-empty" hidden class="px-2 py-2 text-center text-sm text-muted-foreground">No matching type.</div>
+          <div data-slot="combobox-group">
+            <button type="button" data-slot="combobox-item" data-value="INTEGER" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">INTEGER</button>
+            <button type="button" data-slot="combobox-item" data-value="TEXT" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">TEXT</button>
+            <button type="button" data-slot="combobox-item" data-value="REAL" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">REAL</button>
+            <button type="button" data-slot="combobox-item" data-value="NUMERIC" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">NUMERIC</button>
+            <button type="button" data-slot="combobox-item" data-value="BLOB" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">BLOB</button>
+            <button type="button" data-slot="combobox-item" data-value="BOOLEAN" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">BOOLEAN</button>
+            <button type="button" data-slot="combobox-item" data-value="DATE" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">DATE</button>
+            <button type="button" data-slot="combobox-item" data-value="DATETIME" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">DATETIME</button>
+            <button type="button" data-slot="combobox-item" data-value="TIMESTAMP" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">TIMESTAMP</button>
+            <button type="button" data-slot="combobox-item" data-value="JSON" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">JSON</button>
+          </div>
+          <div data-slot="combobox-group">
+            <div data-slot="combobox-label" class="px-2 py-1.5 text-xs text-muted-foreground">Integer</div>
+            <button type="button" data-slot="combobox-item" data-value="INT" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">INT</button>
+            <button type="button" data-slot="combobox-item" data-value="TINYINT" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">TINYINT</button>
+            <button type="button" data-slot="combobox-item" data-value="SMALLINT" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">SMALLINT</button>
+            <button type="button" data-slot="combobox-item" data-value="MEDIUMINT" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">MEDIUMINT</button>
+            <button type="button" data-slot="combobox-item" data-value="BIGINT" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">BIGINT</button>
+            <button type="button" data-slot="combobox-item" data-value="UNSIGNED BIG INT" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">UNSIGNED BIG INT</button>
+            <button type="button" data-slot="combobox-item" data-value="INT2" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">INT2</button>
+            <button type="button" data-slot="combobox-item" data-value="INT8" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">INT8</button>
+          </div>
+          <div data-slot="combobox-group">
+            <div data-slot="combobox-label" class="px-2 py-1.5 text-xs text-muted-foreground">Text</div>
+            <button type="button" data-slot="combobox-item" data-value="CHAR" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">CHAR</button>
+            <button type="button" data-slot="combobox-item" data-value="VARCHAR(255)" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">VARCHAR(255)</button>
+            <button type="button" data-slot="combobox-item" data-value="CHARACTER" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">CHARACTER</button>
+            <button type="button" data-slot="combobox-item" data-value="VARYING CHARACTER" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">VARYING CHARACTER</button>
+            <button type="button" data-slot="combobox-item" data-value="NCHAR" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">NCHAR</button>
+            <button type="button" data-slot="combobox-item" data-value="NATIVE CHARACTER" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">NATIVE CHARACTER</button>
+            <button type="button" data-slot="combobox-item" data-value="NVARCHAR" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">NVARCHAR</button>
+            <button type="button" data-slot="combobox-item" data-value="CLOB" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">CLOB</button>
+          </div>
+          <div data-slot="combobox-group">
+            <div data-slot="combobox-label" class="px-2 py-1.5 text-xs text-muted-foreground">Real</div>
+            <button type="button" data-slot="combobox-item" data-value="DOUBLE" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">DOUBLE</button>
+            <button type="button" data-slot="combobox-item" data-value="DOUBLE PRECISION" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">DOUBLE PRECISION</button>
+            <button type="button" data-slot="combobox-item" data-value="FLOAT" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">FLOAT</button>
+          </div>
+          <div data-slot="combobox-group">
+            <div data-slot="combobox-label" class="px-2 py-1.5 text-xs text-muted-foreground">Numeric</div>
+            <button type="button" data-slot="combobox-item" data-value="DECIMAL" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">DECIMAL</button>
+            <button type="button" data-slot="combobox-item" data-value="DECIMAL(10, 2)" class="relative flex w-full cursor-default items-center rounded-sm py-1.5 pr-2 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[state=checked]:bg-accent">DECIMAL(10, 2)</button>
+          </div>
+        </div>
+      </div>
+      <label data-slot="label" class="flex items-center gap-2 text-sm leading-none font-medium select-none">
+        <input class="col-pk size-4 shrink-0 appearance-none rounded-[4px] border border-input shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30 checked:border-primary checked:bg-primary" data-slot="checkbox" type="checkbox">
+        Primary key
+      </label>
+      <button type="button" class="remove inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-accent/50" data-slot="button" data-variant="ghost" data-size="sm">Remove</button>
+    </div>
+  </template>
+
+  <template id="index-column-row">
+    <div class="index-row grid items-center gap-2 md:grid-cols-[minmax(0,1fr)_9rem_auto]">
+      <div class="index-col relative" data-slot="select" data-value="">
+        <button type="button" data-slot="select-trigger" data-size="default" data-placeholder="" aria-haspopup="listbox" aria-expanded="false" aria-label="Indexed column" class="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground data-[size=default]:h-9 dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground">
+          <span data-slot="select-value" class="line-clamp-1">Column</span>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 opacity-50" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div data-slot="select-content" role="listbox" hidden class="absolute top-full left-0 z-50 mt-1 max-h-60 min-w-full overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"></div>
+      </div>
+      <div class="index-order relative" data-slot="select" data-value="ASC">
+        <button type="button" data-slot="select-trigger" data-size="default" aria-haspopup="listbox" aria-expanded="false" aria-label="Sort order" class="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground data-[size=default]:h-9 dark:bg-input/30 dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground">
+          <span data-slot="select-value" class="line-clamp-1">ASC</span>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 opacity-50" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div data-slot="select-content" role="listbox" hidden class="absolute top-full left-0 z-50 mt-1 max-h-60 min-w-full overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"></div>
+      </div>
+      <button type="button" class="remove inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:hover:bg-accent/50" data-slot="button" data-variant="ghost" data-size="sm">Remove</button>
     </div>
   </template>
 
@@ -427,8 +1946,16 @@
     const RAW = "/accounts/local/d1/database/local/raw";
     const PAGE = 100;
     const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
-    const TYPES = ["INTEGER", "TEXT", "REAL", "BLOB"];
+    // SQLite accepts any type name. This matches a type-name: words, then an optional length.
+    const TYPE_NAME = /^[A-Za-z_][A-Za-z0-9_]*(?:\s+[A-Za-z_][A-Za-z0-9_]*){0,5}(?:\(\s*\d+\s*(?:,\s*\d+\s*)?\))?$/;
     const CATALOG = "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name";
+    const GRAPH_SQL =
+      "SELECT m.name, i.cid, i.name, i.type, i.pk, i.dflt_value FROM sqlite_master AS m " +
+      "JOIN pragma_table_info(m.name) AS i WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' " +
+      "ORDER BY m.name, i.cid; " +
+      "SELECT m.name, f.id, f.seq, f.\"from\", f.\"table\", f.\"to\", f.on_update, f.on_delete " +
+      "FROM sqlite_master AS m JOIN pragma_foreign_key_list(m.name) AS f " +
+      "WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, f.id, f.seq";
 
     const state = {
       token: "",
@@ -440,8 +1967,327 @@
       columns: [],
       hasRowid: false,
       rowids: [],
+      indexes: [],
+      indexColumns: [],
       primary: null,
+      graphEdges: [],
     };
+
+    const BUTTON = "inline-flex shrink-0 items-center justify-center rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50";
+    const BUTTON_VARIANT = {
+      default: "gap-2 bg-primary text-primary-foreground hover:bg-primary/90",
+      outline: "gap-2 border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+      ghost: "gap-2 hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+      destructive: "gap-2 bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
+    };
+    const BUTTON_SIZE = {
+      default: "h-9 px-4 py-2",
+      sm: "h-8 gap-1.5 px-3",
+    };
+    const INPUT = "h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+    const SELECT_ITEM = "relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[state=checked]:bg-accent";
+    const MENU_BUTTON = "peer/menu-button flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>span:last-child]:truncate [&_svg]:size-4 [&_svg]:shrink-0";
+    const BADGE_OUTLINE = "inline-flex w-fit shrink-0 items-center justify-center rounded-full border border-border px-2 py-0.5 text-xs font-medium whitespace-nowrap text-foreground";
+    const TH = "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground";
+    const TD = "p-2 align-middle whitespace-nowrap";
+    const TR = "border-b transition-colors hover:bg-muted/50";
+
+    function buttonClass(variant, size) {
+      return BUTTON + " " + BUTTON_VARIANT[variant] + " " + BUTTON_SIZE[size || "default"];
+    }
+
+    function paintButton(id, variant, size) {
+      const el = document.getElementById(id);
+      el.dataset.slot = "button";
+      el.dataset.variant = variant;
+      el.dataset.size = size || "default";
+      el.className = buttonClass(variant, size);
+    }
+
+    function bindPicker(root) {
+      if (!root || root.dataset.bound === "1") return root;
+      root.dataset.bound = "1";
+      Object.defineProperty(root, "value", {
+        configurable: true,
+        get: function () { return root.dataset.value || ""; },
+        set: function (next) { applyPickerValue(root, next, false); },
+      });
+      const trigger = root.querySelector("[data-slot='select-trigger']");
+      trigger.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const open = root.getAttribute("data-state") === "open";
+        closeTypeMenus();
+        closePickers();
+        if (!open) {
+          const content = root.querySelector("[data-slot='select-content']");
+          const rect = trigger.getBoundingClientRect();
+          content.style.position = "fixed";
+          content.style.top = (rect.bottom + 4) + "px";
+          content.style.left = rect.left + "px";
+          content.style.width = rect.width + "px";
+          root.setAttribute("data-state", "open");
+          trigger.setAttribute("aria-expanded", "true");
+          trigger.setAttribute("data-state", "open");
+          content.hidden = false;
+        }
+      });
+      return root;
+    }
+
+    function closePickers() {
+      document.querySelectorAll("[data-slot='select'][data-state='open']").forEach(function (root) {
+        root.setAttribute("data-state", "closed");
+        const trigger = root.querySelector("[data-slot='select-trigger']");
+        if (trigger) {
+          trigger.setAttribute("aria-expanded", "false");
+          trigger.setAttribute("data-state", "closed");
+        }
+        const content = root.querySelector("[data-slot='select-content']");
+        if (content) content.hidden = true;
+      });
+    }
+
+    function closeTypeMenus(except) {
+      document.querySelectorAll("[data-slot='combobox'][data-state='open']").forEach(function (root) {
+        if (except && root === except) return;
+        root.setAttribute("data-state", "closed");
+        const content = root.querySelector("[data-slot='combobox-content']");
+        if (content) content.hidden = true;
+        const trigger = root.querySelector("[data-slot='combobox-trigger']");
+        if (trigger) trigger.setAttribute("aria-expanded", "false");
+        const input = root.querySelector(".col-type");
+        if (input) input.setAttribute("aria-expanded", "false");
+      });
+    }
+
+    function bindTypeField(root) {
+      if (!root || root.dataset.bound === "1") return;
+      root.dataset.bound = "1";
+      const input = root.querySelector(".col-type");
+      const trigger = root.querySelector("[data-slot='combobox-trigger']");
+      const content = root.querySelector("[data-slot='combobox-content']");
+      const empty = content.querySelector("[data-slot='combobox-empty']");
+
+      function visibleItems() {
+        return Array.prototype.filter.call(content.querySelectorAll("[data-slot='combobox-item']"), function (item) {
+          return !item.hidden;
+        });
+      }
+
+      content.querySelectorAll("[data-slot='combobox-item']").forEach(function (item) {
+        item.setAttribute("role", "option");
+        const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        mark.setAttribute("viewBox", "0 0 24 24");
+        mark.setAttribute("fill", "none");
+        mark.setAttribute("stroke", "currentColor");
+        mark.setAttribute("stroke-width", "2");
+        mark.setAttribute("stroke-linecap", "round");
+        mark.setAttribute("stroke-linejoin", "round");
+        mark.setAttribute("data-slot", "combobox-item-indicator");
+        mark.setAttribute("aria-hidden", "true");
+        mark.setAttribute("class", "ml-auto size-4");
+        mark.style.marginLeft = "auto";
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", "M20 6 9 17l-5-5");
+        mark.append(path);
+        item.append(mark);
+      });
+
+      function paint() {
+        const current = input.value.trim();
+        content.querySelectorAll("[data-slot='combobox-item']").forEach(function (item) {
+          const on = item.dataset.value === current;
+          item.setAttribute("data-state", on ? "checked" : "unchecked");
+          item.setAttribute("aria-selected", on ? "true" : "false");
+          const mark = item.querySelector("[data-slot='combobox-item-indicator']");
+          if (mark) mark.style.opacity = on ? "1" : "0";
+        });
+      }
+
+      function applyFilter(query) {
+        const q = String(query || "").trim().toUpperCase();
+        let any = false;
+        content.querySelectorAll("[data-slot='combobox-group']").forEach(function (group) {
+          let count = 0;
+          group.querySelectorAll("[data-slot='combobox-item']").forEach(function (item) {
+            const show = !q || item.dataset.value.toUpperCase().indexOf(q) !== -1;
+            item.hidden = !show;
+            if (show) count += 1;
+          });
+          group.hidden = count === 0;
+          if (count) any = true;
+        });
+        if (empty) empty.hidden = any;
+        paint();
+      }
+
+      function highlighted() {
+        return content.querySelector("[data-slot='combobox-item'][data-highlighted]");
+      }
+
+      function move(delta) {
+        const items = visibleItems();
+        if (!items.length) return;
+        let index = items.indexOf(highlighted());
+        index = index === -1 ? (delta > 0 ? 0 : items.length - 1) : (index + delta + items.length) % items.length;
+        items.forEach(function (item) { item.removeAttribute("data-highlighted"); });
+        items[index].setAttribute("data-highlighted", "");
+        reveal(items[index]);
+      }
+
+      function reveal(item) {
+        const top = item.offsetTop;
+        const bottom = top + item.offsetHeight;
+        if (top < content.scrollTop) content.scrollTop = top;
+        else if (bottom > content.scrollTop + content.clientHeight) content.scrollTop = bottom - content.clientHeight;
+      }
+
+      function place() {
+        const rect = root.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        const openUp = spaceBelow < 280 && spaceAbove > spaceBelow;
+        const room = Math.max(160, Math.min((openUp ? spaceAbove : spaceBelow) - 12, 384));
+        content.style.position = "fixed";
+        content.style.left = rect.left + "px";
+        content.style.width = Math.max(rect.width, 220) + "px";
+        content.style.maxHeight = room + "px";
+        content.style.overscrollBehavior = "contain";
+        if (openUp) {
+          content.style.top = "auto";
+          content.style.bottom = (window.innerHeight - rect.top + 4) + "px";
+        } else {
+          content.style.bottom = "auto";
+          content.style.top = (rect.bottom + 4) + "px";
+        }
+      }
+
+      function open(filter) {
+        closePickers();
+        closeTypeMenus(root);
+        applyFilter(filter ? input.value : "");
+        place();
+        content.hidden = false;
+        root.setAttribute("data-state", "open");
+        trigger.setAttribute("aria-expanded", "true");
+        input.setAttribute("aria-expanded", "true");
+        content.querySelectorAll("[data-highlighted]").forEach(function (item) {
+          item.removeAttribute("data-highlighted");
+        });
+        const chosen = content.querySelector("[data-slot='combobox-item'][data-state='checked']:not([hidden])");
+        const target = chosen || visibleItems()[0];
+        if (target) {
+          target.setAttribute("data-highlighted", "");
+          reveal(target);
+        }
+      }
+
+      function close() {
+        content.hidden = true;
+        root.setAttribute("data-state", "closed");
+        trigger.setAttribute("aria-expanded", "false");
+        input.setAttribute("aria-expanded", "false");
+      }
+
+      trigger.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+      });
+      trigger.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (root.getAttribute("data-state") === "open") close();
+        else open(false);
+      });
+      content.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+      });
+      content.addEventListener("click", function (event) {
+        const item = event.target.closest("[data-slot='combobox-item']");
+        if (!item) return;
+        event.preventDefault();
+        event.stopPropagation();
+        input.value = item.dataset.value;
+        close();
+        input.focus();
+      });
+      input.addEventListener("focus", function () {
+        if (root.getAttribute("data-state") !== "open") open(false);
+      });
+      input.addEventListener("input", function () {
+        open(true);
+      });
+      input.addEventListener("keydown", function (event) {
+        const openNow = root.getAttribute("data-state") === "open";
+        if (event.key === "Escape" && openNow) {
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+          return;
+        }
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (!openNow) open(true);
+          else move(1);
+          return;
+        }
+        if (event.key === "ArrowUp" && openNow) {
+          event.preventDefault();
+          move(-1);
+          return;
+        }
+        if (event.key === "Enter" && openNow) {
+          event.preventDefault();
+          const item = highlighted();
+          if (item) input.value = item.dataset.value;
+          close();
+        }
+      });
+    }
+
+    function applyPickerValue(root, value, notify) {
+      root.dataset.value = value || "";
+      const label = root.querySelector("[data-slot='select-value']");
+      const items = root.querySelectorAll("[data-slot='select-item']");
+      let text = "";
+      items.forEach(function (item) {
+        const on = item.dataset.value === root.dataset.value;
+        item.setAttribute("data-state", on ? "checked" : "unchecked");
+        item.setAttribute("aria-selected", on ? "true" : "false");
+        if (on) text = item.textContent;
+      });
+      if (label) label.textContent = text || value || "Select";
+      const trigger = root.querySelector("[data-slot='select-trigger']");
+      if (trigger) {
+        if (text || value) trigger.removeAttribute("data-placeholder");
+        else trigger.setAttribute("data-placeholder", "");
+      }
+      if (notify) root.dispatchEvent(new Event("change"));
+    }
+
+    function setPickerOptions(root, options, preferred) {
+      bindPicker(root);
+      const content = root.querySelector("[data-slot='select-content']");
+      content.replaceChildren();
+      options.forEach(function (option) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.dataset.slot = "select-item";
+        item.dataset.value = option.value;
+        item.className = SELECT_ITEM;
+        item.setAttribute("role", "option");
+        item.textContent = option.label;
+        item.addEventListener("click", function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          applyPickerValue(root, option.value, true);
+          closePickers();
+        });
+        content.append(item);
+      });
+      const keep = preferred && options.some(function (option) { return option.value === preferred; });
+      applyPickerValue(root, keep ? preferred : (options[0] ? options[0].value : ""), false);
+    }
 
     function storageGet(key) {
       try { return sessionStorage.getItem(key); } catch (err) { return null; }
@@ -499,7 +2345,6 @@
       if (state.busy) return;
       state.busy = true;
       document.body.dataset.busy = "1";
-      setStatus("Working.");
       setError("");
       try {
         await fn();
@@ -575,6 +2420,19 @@
       return '"' + value + '"';
     }
 
+    function sqlString(value) {
+      return "'" + String(value).replaceAll("'", "''") + "'";
+    }
+
+    function columnType(value) {
+      const type = String(value || "").trim().replace(/\s+/g, " ");
+      if (!type) return "";
+      if (!TYPE_NAME.test(type)) {
+        throw new Error("Use a SQLite type name, such as INTEGER, VARCHAR(255), or DECIMAL(10, 2).");
+      }
+      return type;
+    }
+
     function current() {
       for (let i = 0; i < state.tables.length; i++) {
         if (state.tables[i].name === state.selected) return state.tables[i];
@@ -585,19 +2443,26 @@
     function bindValue(text, type) {
       if (text === "") return null;
       const kind = String(type || "").toUpperCase();
-      if (kind.indexOf("INT") !== -1) {
+      const numeric = /^-?(0|[1-9]\d*)(\.\d+)?$/.test(text);
+      if (kind.indexOf("INT") !== -1 && kind.indexOf("INTERVAL") === -1) {
         if (/^-?(0|[1-9]\d{0,14})$/.test(text)) {
           const number = Number(text);
           if (Number.isSafeInteger(number)) return number;
         }
         return text;
       }
-      if (kind === "REAL" || kind === "FLOAT" || kind === "DOUBLE") {
-        if (/^-?(0|[1-9]\d*)(\.\d+)?$/.test(text)) {
+      if (
+        kind.indexOf("REAL") !== -1 ||
+        kind.indexOf("FLOA") !== -1 ||
+        kind.indexOf("DOUB") !== -1 ||
+        kind.indexOf("NUM") !== -1 ||
+        kind.indexOf("DEC") !== -1 ||
+        kind === "BOOLEAN"
+      ) {
+        if (numeric) {
           const number = Number(text);
           if (Number.isFinite(number)) return number;
         }
-        return text;
       }
       return text;
     }
@@ -611,29 +2476,42 @@
     function grid(columns, rows, options) {
       const skip = options && options.skip;
       const table = document.createElement("table");
-      table.className = "grid";
+      table.dataset.slot = "table";
+      table.className = "w-full caption-bottom text-sm";
       const thead = document.createElement("thead");
+      thead.dataset.slot = "table-header";
+      thead.className = "[&_tr]:border-b";
       const headRow = document.createElement("tr");
+      headRow.dataset.slot = "table-row";
+      headRow.className = "border-b";
       columns.forEach(function (column, index) {
         if (skip && skip.has(index)) return;
         const th = document.createElement("th");
+        th.dataset.slot = "table-head";
+        th.className = TH;
         th.scope = "col";
         th.textContent = column;
         headRow.append(th);
       });
       if (options && options.onDelete) {
         const th = document.createElement("th");
+        th.dataset.slot = "table-head";
+        th.className = TH;
         th.scope = "col";
         const span = document.createElement("span");
-        span.className = "sr";
+        span.className = "sr-only";
         span.textContent = "Delete";
         th.append(span);
         headRow.append(th);
       }
       thead.append(headRow);
       const tbody = document.createElement("tbody");
+      tbody.dataset.slot = "table-body";
+      tbody.className = "[&_tr:last-child]:border-0";
       if (!rows.length) {
         const tr = document.createElement("tr");
+        tr.dataset.slot = "table-row";
+        tr.className = TR;
         const td = document.createElement("td");
         let visible = 0;
         columns.forEach(function (_, index) {
@@ -641,30 +2519,40 @@
         });
         if (options && options.onDelete) visible += 1;
         td.colSpan = Math.max(visible, 1);
-        td.className = "null";
+        td.dataset.slot = "table-cell";
+        td.className = TD + " text-muted-foreground";
         td.textContent = "No rows.";
         tr.append(td);
         tbody.append(tr);
       }
       rows.forEach(function (row, rowIndex) {
         const tr = document.createElement("tr");
+        tr.dataset.slot = "table-row";
+        tr.className = TR;
         row.forEach(function (value, index) {
           if (skip && skip.has(index)) return;
           const td = document.createElement("td");
+          td.dataset.slot = "table-cell";
           const text = cellValue(value);
           if (text === null) {
-            td.className = "null";
+            td.className = TD + " text-muted-foreground";
             td.textContent = "NULL";
           } else {
-            if (typeof value === "number") td.className = "num";
+            td.className = typeof value === "number" ? TD + " text-right font-mono tabular-nums" : TD;
             td.textContent = text;
           }
           tr.append(td);
         });
         if (options && options.onDelete) {
           const td = document.createElement("td");
+          td.dataset.slot = "table-cell";
+          td.className = TD;
           const button = document.createElement("button");
           button.type = "button";
+          button.dataset.slot = "button";
+          button.dataset.variant = "ghost";
+          button.dataset.size = "sm";
+          button.className = buttonClass("ghost", "sm") + " text-destructive hover:bg-destructive/10 hover:text-destructive";
           button.textContent = "Delete";
           button.addEventListener("click", function () { options.onDelete(rowIndex); });
           td.append(button);
@@ -674,7 +2562,8 @@
       });
       table.append(thead, tbody);
       const wrap = document.createElement("div");
-      wrap.className = "grid-scroll";
+      wrap.dataset.slot = "table-container";
+      wrap.className = "relative w-full overflow-x-auto rounded-xl border bg-card text-card-foreground shadow-sm";
       wrap.append(table);
       return wrap;
     }
@@ -684,8 +2573,9 @@
       list.replaceChildren();
       if (!state.tables.length) {
         const item = document.createElement("li");
+        item.dataset.slot = "sidebar-menu-item";
         const note = document.createElement("p");
-        note.className = "hint";
+        note.className = "px-2 text-sm text-muted-foreground";
         note.textContent = "No tables yet.";
         item.append(note);
         list.append(item);
@@ -693,19 +2583,27 @@
       }
       state.tables.forEach(function (table) {
         const item = document.createElement("li");
+        item.dataset.slot = "sidebar-menu-item";
+        item.className = "group/menu-item relative";
         const button = document.createElement("button");
         button.type = "button";
+        button.dataset.slot = "sidebar-menu-button";
+        button.dataset.sidebar = "menu-button";
+        button.dataset.size = "default";
+        button.className = MENU_BUTTON;
         button.setAttribute("data-name", table.name);
-        if (table.name === state.selected && state.mode !== "create" && state.mode !== "sql") {
-          button.className = "active";
-          button.setAttribute("aria-current", "true");
-        }
+        const active = table.name === state.selected && state.mode !== "create" && state.mode !== "index" && state.mode !== "sql" && state.mode !== "graph";
+        button.dataset.active = active ? "true" : "false";
+        if (active) button.setAttribute("aria-current", "true");
         const name = document.createElement("span");
+        name.className = "min-w-0 flex-1 truncate font-mono";
         name.textContent = table.name;
         button.append(name);
         if (table.type === "view") {
           const kind = document.createElement("span");
-          kind.className = "kind";
+          kind.dataset.slot = "badge";
+          kind.dataset.variant = "outline";
+          kind.className = BADGE_OUTLINE;
           kind.textContent = "view";
           button.append(kind);
         }
@@ -720,16 +2618,20 @@
       const isTable = table && table.type === "table";
       document.getElementById("panel-empty").hidden = mode !== "empty";
       document.getElementById("panel-create").hidden = mode !== "create";
+      document.getElementById("panel-index").hidden = mode !== "index";
       document.getElementById("panel-table").hidden = mode !== "rows" && mode !== "structure";
       document.getElementById("panel-sql").hidden = mode !== "sql";
+      document.getElementById("panel-graph").hidden = mode !== "graph";
       document.getElementById("grid-wrap").hidden = mode !== "rows";
       document.getElementById("pager").hidden = mode !== "rows";
       document.getElementById("insert-form").hidden = mode !== "rows" || !isTable;
       document.getElementById("structure").hidden = mode !== "structure";
-      document.getElementById("sql-tab").classList.toggle("active", mode === "sql");
-      document.getElementById("new-table").classList.toggle("active", mode === "create");
-      document.getElementById("show-rows").classList.toggle("active", mode === "rows");
-      document.getElementById("show-structure").classList.toggle("active", mode === "structure");
+      document.getElementById("sql-tab").setAttribute("data-state", mode === "sql" ? "active" : "inactive");
+      document.getElementById("graph-tab").setAttribute("data-state", mode === "graph" ? "active" : "inactive");
+      document.getElementById("show-rows").setAttribute("data-state", mode === "rows" ? "active" : "inactive");
+      document.getElementById("show-structure").setAttribute("data-state", mode === "structure" ? "active" : "inactive");
+      paintButton("new-table", mode === "create" ? "default" : "outline", "sm");
+      paintButton("new-index", mode === "index" ? "default" : "outline", "sm");
       renderTableList();
     }
 
@@ -799,20 +2701,20 @@
       form.replaceChildren();
       const table = current();
       if (!table || table.type !== "table" || !state.columns.length) return;
-      const note = document.createElement("p");
-      note.className = "hint";
-      note.textContent = "Empty fields are NULL. An empty integer primary key lets SQLite assign rowid.";
-      form.append(note);
       state.columns.forEach(function (column) {
         const label = document.createElement("label");
+        label.className = "grid gap-2";
         const span = document.createElement("span");
         const bits = [column.name];
         if (column.type) bits.push(column.type);
         if (column.pk) bits.push("primary key");
         if (column.notnull) bits.push("required");
-        span.className = "caption";
-        span.textContent = bits.join(" · ");
+        span.dataset.slot = "label";
+        span.className = "text-sm leading-none font-medium";
+        span.textContent = bits.join(" \u00b7 ");
         const input = document.createElement("input");
+        input.dataset.slot = "input";
+        input.className = INPUT;
         input.autocomplete = "off";
         input.spellcheck = false;
         input.dataset.type = column.type;
@@ -821,9 +2723,12 @@
         form.append(label);
       });
       const actions = document.createElement("div");
-      actions.className = "actions";
+      actions.className = "flex flex-wrap items-center gap-2";
       const button = document.createElement("button");
-      button.className = "primary";
+      button.dataset.slot = "button";
+      button.dataset.variant = "default";
+      button.dataset.size = "default";
+      button.className = buttonClass("default");
       button.type = "submit";
       button.textContent = "Insert row";
       actions.append(button);
@@ -844,6 +2749,181 @@
         ];
       });
       host.append(grid(columns, rows, null));
+      const table = current();
+      if (!table || table.type !== "table") return;
+      const heading = document.createElement("h3");
+      heading.className = "mt-6 mb-3 text-sm font-medium";
+      heading.textContent = "Indexes";
+      host.append(heading);
+      if (!state.indexes.length) {
+        const note = document.createElement("p");
+        note.className = "text-sm text-muted-foreground";
+        note.textContent = "No indexes yet.";
+        host.append(note);
+      } else {
+        const indexTable = document.createElement("table");
+        indexTable.dataset.slot = "table";
+        indexTable.className = "w-full caption-bottom text-sm";
+        const thead = document.createElement("thead");
+        thead.dataset.slot = "table-header";
+        thead.className = "[&_tr]:border-b";
+        const headRow = document.createElement("tr");
+        headRow.dataset.slot = "table-row";
+        headRow.className = "border-b";
+        ["name", "columns", "notes", ""].forEach(function (label) {
+          const th = document.createElement("th");
+          th.dataset.slot = "table-head";
+          th.className = TH;
+          th.scope = "col";
+          if (label) th.textContent = label;
+          else {
+            const span = document.createElement("span");
+            span.className = "sr-only";
+            span.textContent = "Drop";
+            th.append(span);
+          }
+          headRow.append(th);
+        });
+        thead.append(headRow);
+        const tbody = document.createElement("tbody");
+        tbody.dataset.slot = "table-body";
+        tbody.className = "[&_tr:last-child]:border-0";
+        state.indexes.forEach(function (index) {
+          const tr = document.createElement("tr");
+          tr.dataset.slot = "table-row";
+          tr.className = TR;
+          const name = document.createElement("td");
+          name.dataset.slot = "table-cell";
+          name.className = TD + " font-mono";
+          name.textContent = index.name;
+          const cols = document.createElement("td");
+          cols.dataset.slot = "table-cell";
+          cols.className = TD;
+          cols.textContent = index.columns || "";
+          const notes = document.createElement("td");
+          notes.dataset.slot = "table-cell";
+          notes.className = TD + " text-muted-foreground";
+          const bits = [];
+          if (index.origin === "pk") bits.push("primary key");
+          else if (index.origin === "u") bits.push("unique constraint");
+          else if (index.unique) bits.push("unique");
+          if (index.partial) bits.push("partial");
+          notes.textContent = bits.join(", ");
+          tr.append(name, cols, notes);
+          const action = document.createElement("td");
+          action.dataset.slot = "table-cell";
+          action.className = TD;
+          if (index.origin === "c") {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.slot = "button";
+            button.dataset.variant = "ghost";
+            button.dataset.size = "sm";
+            button.className = buttonClass("ghost", "sm") + " text-destructive hover:bg-destructive/10 hover:text-destructive";
+            button.textContent = "Drop";
+            button.addEventListener("click", function () { dropIndex(index.name); });
+            action.append(button);
+          }
+          tr.append(action);
+          tbody.append(tr);
+        });
+        indexTable.append(thead, tbody);
+        const wrap = document.createElement("div");
+        wrap.dataset.slot = "table-container";
+        wrap.className = "relative w-full overflow-x-auto rounded-xl border bg-card text-card-foreground shadow-sm";
+        wrap.append(indexTable);
+        host.append(wrap);
+      }
+      const create = document.createElement("button");
+      create.type = "button";
+      create.dataset.slot = "button";
+      create.dataset.variant = "outline";
+      create.dataset.size = "default";
+      create.className = buttonClass("outline") + " mt-4";
+      create.textContent = "New index";
+      create.addEventListener("click", function () {
+        withBusy(function () { return openIndex(table.name); });
+      });
+      host.append(create);
+    }
+
+    async function fetchIndexes(name) {
+      const sql = "SELECT il.name AS name, il.\"unique\" AS is_unique, il.origin AS origin, il.partial AS partial, " +
+        "(SELECT group_concat(label, ', ') FROM (" +
+        "SELECT CASE WHEN ii.name IS NULL THEN '(expression)' WHEN ii.desc <> 0 THEN ii.name || ' DESC' ELSE ii.name END AS label " +
+        "FROM pragma_index_xinfo(il.name) AS ii WHERE ii.key = 1 ORDER BY ii.seqno" +
+        ")) AS columns " +
+        "FROM pragma_index_list(" + sqlString(name) + ") AS il ORDER BY il.seq";
+      const statements = await raw(sql, []);
+      const rows = statements[0] && statements[0].results && statements[0].results.rows || [];
+      return rows.map(function (row) {
+        return {
+          name: row[0] == null ? "" : String(row[0]),
+          unique: Number(row[1]) === 1,
+          origin: row[2] == null ? "" : String(row[2]),
+          partial: Number(row[3]) === 1,
+          columns: row[4] == null ? "" : String(row[4]),
+        };
+      });
+    }
+
+    function fillIndexSelect(select) {
+      const current = select.dataset.value || "";
+      setPickerOptions(select, state.indexColumns.map(function (column) {
+        return { value: column.name, label: column.name };
+      }), current);
+    }
+
+    async function refreshIndexColumns() {
+      const name = document.getElementById("index-table").value;
+      state.indexColumns = name ? await fetchColumns(name) : [];
+      document.querySelectorAll("#index-columns .index-col").forEach(fillIndexSelect);
+    }
+
+    function addIndexColumn(focus) {
+      const row = document.getElementById("index-column-row").content.firstElementChild.cloneNode(true);
+      fillIndexSelect(row.querySelector(".index-col"));
+      setPickerOptions(row.querySelector(".index-order"), [
+        { value: "ASC", label: "ASC" },
+        { value: "DESC", label: "DESC" },
+      ], "ASC");
+      row.querySelector(".remove").addEventListener("click", function () {
+        if (document.querySelectorAll("#index-columns .index-row").length === 1) return;
+        row.remove();
+      });
+      document.getElementById("index-columns").append(row);
+      if (focus) row.querySelector(".index-col [data-slot='select-trigger']").focus();
+    }
+
+    async function openIndex(tableName) {
+      const tables = state.tables.filter(function (table) { return table.type === "table"; });
+      const select = document.getElementById("index-table");
+      const preferred = tables.some(function (table) { return table.name === tableName; })
+        ? tableName
+        : (tables[0] ? tables[0].name : "");
+      setPickerOptions(select, tables.map(function (table) {
+        return { value: table.name, label: table.name };
+      }), preferred);
+      document.getElementById("index-name").value = "";
+      document.getElementById("index-unique").checked = false;
+      document.getElementById("index-columns").replaceChildren();
+      document.getElementById("index-form").hidden = tables.length === 0;
+      document.getElementById("index-empty").hidden = tables.length !== 0;
+      setMode("index");
+      if (!tables.length) return;
+      await refreshIndexColumns();
+      addIndexColumn(false);
+    }
+
+    function dropIndex(name) {
+      const table = current();
+      if (!table) return;
+      if (!window.confirm("Drop index " + name + "?")) return;
+      withBusy(async function () {
+        await raw("DROP INDEX " + quoteIdent(name), []);
+        state.mode = "structure";
+        await showTable(table.name, state.offset);
+      });
     }
 
     function renderPage(page) {
@@ -872,16 +2952,25 @@
       const from = rows.length ? state.offset + 1 : 0;
       const to = state.offset + rows.length;
       const label = document.createElement("span");
+      label.className = "min-w-28 text-sm text-muted-foreground tabular-nums";
       if (!rows.length) label.textContent = "No rows.";
       else if (page.total == null) label.textContent = from + "\u2013" + to;
       else label.textContent = from + "\u2013" + to + " of " + page.total;
       const prev = document.createElement("button");
       prev.type = "button";
+      prev.dataset.slot = "button";
+      prev.dataset.variant = "outline";
+      prev.dataset.size = "sm";
+      prev.className = buttonClass("outline", "sm");
       prev.textContent = "Previous";
       prev.disabled = state.offset === 0;
       prev.addEventListener("click", function () { turn(-1); });
       const next = document.createElement("button");
       next.type = "button";
+      next.dataset.slot = "button";
+      next.dataset.variant = "outline";
+      next.dataset.size = "sm";
+      next.className = buttonClass("outline", "sm");
       next.textContent = "Next";
       const atEnd = rows.length < PAGE || (page.total != null && to >= page.total);
       next.disabled = atEnd;
@@ -901,6 +2990,7 @@
       state.offset = offset;
       state.columns = columns;
       const table = current();
+      state.indexes = table && table.type === "table" ? await fetchIndexes(name) : [];
       document.getElementById("table-title").textContent = name;
       document.getElementById("table-kind").textContent = table ? table.type : "";
       document.getElementById("drop").textContent = table && table.type === "view" ? "Drop view" : "Drop table";
@@ -939,6 +3029,7 @@
         if (document.querySelectorAll("#create-columns .col-row").length === 1) return;
         row.remove();
       });
+      bindTypeField(row.querySelector("[data-slot='combobox']"));
     }
 
     function addColumn(focus) {
@@ -960,6 +3051,7 @@
       statements.forEach(function (statement, index) {
         const block = document.createElement("section");
         const heading = document.createElement("h3");
+        heading.className = "mt-6 mb-3 text-sm font-medium first:mt-0";
         heading.textContent = "Statement " + (index + 1);
         block.append(heading);
         const results = statement.results || {};
@@ -967,6 +3059,7 @@
         const rows = results.rows || [];
         if (!columns.length) {
           const done = document.createElement("p");
+          done.className = "text-sm text-muted-foreground";
           done.textContent = "Done.";
           block.append(done);
         } else {
@@ -974,13 +3067,351 @@
         }
         if (statement.meta && statement.meta.changes) {
           const changes = document.createElement("p");
-          changes.className = "hint";
+          changes.className = "mt-2 text-sm text-muted-foreground";
           const n = statement.meta.changes;
           changes.textContent = n + (n === 1 ? " change" : " changes");
           block.append(changes);
         }
         host.append(block);
       });
+    }
+
+    function cssEscape(value) {
+      if (window.CSS && CSS.escape) return CSS.escape(String(value));
+      return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+    }
+
+    function statementRows(statements, index) {
+      const statement = statements[index];
+      return statement && statement.results && statement.results.rows || [];
+    }
+
+    // Parents sit to the left. A cycle contributes no extra depth.
+    function graphDepths(names, edges) {
+      const parents = {};
+      names.forEach(function (name) { parents[name] = []; });
+      edges.forEach(function (edge) {
+        if (!edge.parent || edge.parent === edge.child) return;
+        if (!parents[edge.child] || names.indexOf(edge.parent) === -1) return;
+        if (parents[edge.child].indexOf(edge.parent) === -1) parents[edge.child].push(edge.parent);
+      });
+      const memo = {};
+      function depth(name, stack) {
+        if (Object.prototype.hasOwnProperty.call(memo, name)) return memo[name];
+        if (stack.indexOf(name) !== -1) return 0;
+        const list = parents[name] || [];
+        if (!list.length) {
+          memo[name] = 0;
+          return 0;
+        }
+        stack.push(name);
+        let value = 0;
+        list.forEach(function (parent) {
+          value = Math.max(value, 1 + depth(parent, stack));
+        });
+        stack.pop();
+        memo[name] = value;
+        return value;
+      }
+      const out = {};
+      names.forEach(function (name) { out[name] = depth(name, []); });
+      return out;
+    }
+
+    function edgeAction(edge) {
+      const actions = [];
+      if (edge.onDelete && edge.onDelete.toUpperCase() !== "NO ACTION") {
+        actions.push("on delete " + edge.onDelete.toLowerCase());
+      }
+      if (edge.onUpdate && edge.onUpdate.toUpperCase() !== "NO ACTION") {
+        actions.push("on update " + edge.onUpdate.toLowerCase());
+      }
+      return actions.join(" \u00b7 ");
+    }
+
+    function smoothStep(x1, y1, x2, y2) {
+      const midX = (x1 + x2) / 2;
+      const dy = Math.abs(y2 - y1);
+      const rad = Math.min(8, dy / 2, Math.abs(midX - x1));
+      if (dy < 2 || rad < 1) return "M " + x1 + " " + y1 + " H " + x2;
+      const dirY = y2 > y1 ? 1 : -1;
+      const dirX = x2 >= x1 ? 1 : -1;
+      return "M " + x1 + " " + y1 +
+        " H " + (midX - dirX * rad) +
+        " Q " + midX + " " + y1 + " " + midX + " " + (y1 + dirY * rad) +
+        " V " + (y2 - dirY * rad) +
+        " Q " + midX + " " + y2 + " " + (midX + dirX * rad) + " " + y2 +
+        " H " + x2;
+    }
+
+    function columnEl(board, table, column) {
+      const tableSel = cssEscape(table);
+      if (column) {
+        const el = board.querySelector(
+          '.fk-col[data-table="' + tableSel + '"][data-column="' + cssEscape(column) + '"]'
+        );
+        if (el) return el;
+      }
+      return board.querySelector('.fk-col[data-table="' + tableSel + '"][data-pk="1"]') ||
+        board.querySelector('.fk-title[data-table="' + tableSel + '"]');
+    }
+
+    function drawEdges() {
+      const board = document.getElementById("graph-board");
+      const panel = document.getElementById("panel-graph");
+      const edges = state.graphEdges || [];
+      if (panel.hidden || !edges.length || !board.querySelector(".fk-card")) {
+        const stale = board.querySelector("svg");
+        if (stale) stale.remove();
+        return;
+      }
+      const width = board.scrollWidth;
+      const height = board.scrollHeight;
+      const stamp = width + "x" + height + ":" + edges.length;
+      const existing = board.querySelector("svg");
+      if (existing && existing.getAttribute("data-stamp") === stamp) return;
+      if (existing) existing.remove();
+
+      const svgNS = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(svgNS, "svg");
+      svg.setAttribute("class", "fk-svg");
+      svg.style.position = "absolute";
+      svg.style.top = "0";
+      svg.style.left = "0";
+      svg.style.overflow = "visible";
+      svg.style.pointerEvents = "none";
+      svg.setAttribute("width", String(width));
+      svg.setAttribute("height", String(height));
+      svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+      svg.setAttribute("data-stamp", stamp);
+      const defs = document.createElementNS(svgNS, "defs");
+      function addMarker(id, points, width) {
+        const marker = document.createElementNS(svgNS, "marker");
+        marker.setAttribute("id", id);
+        marker.setAttribute("viewBox", "-10 -10 20 20");
+        marker.setAttribute("refX", "0");
+        marker.setAttribute("refY", "0");
+        marker.setAttribute("markerWidth", "16");
+        marker.setAttribute("markerHeight", "16");
+        marker.setAttribute("orient", "auto-start-reverse");
+        const shape = document.createElementNS(svgNS, "polyline");
+        shape.setAttribute("points", points);
+        shape.setAttribute("fill", "none");
+        shape.setAttribute("stroke", "currentColor");
+        shape.setAttribute("stroke-width", width);
+        shape.setAttribute("stroke-linecap", "square");
+        shape.setAttribute("stroke-linejoin", "round");
+        marker.append(shape);
+        defs.append(marker);
+      }
+      addMarker("fk-one", "-10,-8 -10,8", "3");
+      addMarker("fk-many", "0,-8 -10,0 0,8", "1.5");
+      svg.append(defs);
+      board.prepend(svg);
+
+      const boardRect = board.getBoundingClientRect();
+      function point(el, side) {
+        const handle = el.querySelector(".fk-handle." + side);
+        const rect = (handle || el).getBoundingClientRect();
+        return {
+          x: (handle ? rect.left + rect.width / 2 : (side === "left" ? rect.left : rect.right)) - boardRect.left,
+          y: rect.top + rect.height / 2 - boardRect.top,
+        };
+      }
+
+      edges.forEach(function (edge) {
+        const fromEl = columnEl(board, edge.child, edge.from);
+        const toEl = columnEl(board, edge.parent, edge.to);
+        if (!fromEl || !toEl) return;
+        const same = fromEl.closest(".fk-card") === toEl.closest(".fk-card");
+        const start = point(toEl, "right");
+        const end = point(fromEl, same ? "right" : "left");
+        let d;
+        if (same) {
+          const bow = 40;
+          const x = Math.max(start.x, end.x) + bow;
+          d = "M " + start.x + " " + start.y + " C " + x + " " + start.y + ", " + x + " " + end.y + ", " + end.x + " " + end.y;
+        } else {
+          d = smoothStep(start.x, start.y, end.x, end.y);
+        }
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("class", "fk-edge");
+        path.setAttribute("d", d);
+        path.setAttribute("marker-start", "url(#fk-one)");
+        path.setAttribute("marker-end", edge.oneToOne ? "url(#fk-one)" : "url(#fk-many)");
+        svg.append(path);
+        const action = edgeAction(edge);
+        if (!action) return;
+        const text = document.createElementNS(svgNS, "text");
+        text.setAttribute("x", String((start.x + end.x) / 2));
+        text.setAttribute("y", String(Math.min(start.y, end.y) - 18));
+        text.setAttribute("text-anchor", "middle");
+        text.textContent = action;
+        svg.append(text);
+        const box = text.getBBox();
+        const rect = document.createElementNS(svgNS, "rect");
+        rect.setAttribute("class", "fk-label-bg");
+        rect.setAttribute("x", String(box.x - 4));
+        rect.setAttribute("y", String(box.y - 1));
+        rect.setAttribute("width", String(box.width + 8));
+        rect.setAttribute("height", String(box.height + 2));
+        rect.setAttribute("rx", "4");
+        svg.insertBefore(rect, text);
+      });
+    }
+
+    async function renderGraph() {
+      const statements = await raw(GRAPH_SQL, []);
+      const colRows = statementRows(statements, 0);
+      const fkRows = statementRows(statements, 1);
+      const tables = [];
+      const byName = {};
+      colRows.forEach(function (row) {
+        const name = String(row[0]);
+        if (!byName[name]) {
+          byName[name] = { name: name, columns: [] };
+          tables.push(byName[name]);
+        }
+        byName[name].columns.push({
+          name: row[2] == null ? "" : String(row[2]),
+          type: row[3] == null ? "" : String(row[3]),
+          pk: Number(row[4]) > 0,
+          dflt: row[5] == null ? "" : String(row[5]),
+        });
+      });
+      function pkName(table) {
+        const found = byName[table];
+        if (!found) return "";
+        const column = found.columns.find(function (item) { return item.pk; });
+        return column ? column.name : "";
+      }
+      const edges = fkRows.map(function (row) {
+        const child = String(row[0]);
+        const from = row[3] == null ? "" : String(row[3]);
+        const parent = row[4] == null ? "" : String(row[4]);
+        const to = row[5] == null || row[5] === "" ? pkName(parent) : String(row[5]);
+        const childCols = byName[child] ? byName[child].columns : [];
+        const pkColumns = childCols.filter(function (column) { return column.pk; });
+        return {
+          child: child,
+          from: from,
+          parent: parent,
+          to: to,
+          onUpdate: row[6] == null ? "" : String(row[6]),
+          onDelete: row[7] == null ? "" : String(row[7]),
+          oneToOne: pkColumns.length === 1 && pkColumns[0].name === from,
+        };
+      });
+      const handles = {};
+      function addHandle(table, column, side) {
+        if (!table || !column) return;
+        const key = table + "\0" + column;
+        if (!handles[key]) handles[key] = {};
+        handles[key][side] = true;
+      }
+      edges.forEach(function (edge) {
+        const same = edge.parent === edge.child;
+        addHandle(edge.child, edge.from, same ? "right" : "left");
+        addHandle(edge.parent, edge.to, "right");
+      });
+      const board = document.getElementById("graph-board");
+      board.replaceChildren();
+      state.graphEdges = edges;
+      if (!tables.length) {
+        const note = document.createElement("p");
+        note.className = "p-6 text-sm text-muted-foreground";
+        note.textContent = "No tables yet.";
+        board.append(note);
+        return;
+      }
+      const names = tables.map(function (table) { return table.name; });
+      const depthOf = graphDepths(names, edges);
+      let maxDepth = 0;
+      names.forEach(function (name) { maxDepth = Math.max(maxDepth, depthOf[name]); });
+      const columns = [];
+      for (let depth = 0; depth <= maxDepth; depth += 1) columns.push([]);
+      tables.forEach(function (table) { columns[depthOf[table.name]].push(table); });
+      const cols = document.createElement("div");
+      cols.className = "fk-cols";
+      columns.forEach(function (list) {
+        if (!list.length) return;
+        list.sort(function (a, b) {
+          if (a.name < b.name) return -1;
+          if (a.name > b.name) return 1;
+          return 0;
+        });
+        const stack = document.createElement("div");
+        stack.className = "fk-stack";
+        list.forEach(function (table) {
+          const card = document.createElement("div");
+          card.dataset.slot = "card";
+          card.className = "fk-card relative flex w-72 cursor-pointer flex-col gap-0 overflow-visible rounded-xl border bg-card py-0 text-left text-card-foreground shadow-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
+          card.tabIndex = 0;
+          card.setAttribute("role", "button");
+          card.setAttribute("data-table", table.name);
+          const title = document.createElement("div");
+          title.dataset.slot = "card-title";
+          title.className = "fk-title border-b px-4 py-3 leading-none font-semibold";
+          title.setAttribute("data-table", table.name);
+          title.textContent = table.name;
+          const grid = document.createElement("table");
+          grid.dataset.slot = "table";
+          grid.className = "w-full text-sm";
+          const body = document.createElement("tbody");
+          table.columns.forEach(function (column) {
+            const row = document.createElement("tr");
+            row.dataset.slot = "table-row";
+            row.className = "fk-col border-b last:border-b-0";
+            row.setAttribute("data-table", table.name);
+            row.setAttribute("data-column", column.name);
+            if (column.pk) row.setAttribute("data-pk", "1");
+            const sides = handles[table.name + "\0" + column.name] || {};
+            const name = document.createElement("td");
+            name.dataset.slot = "table-cell";
+            name.className = "fk-name relative p-2 align-middle font-mono text-xs font-medium";
+            name.textContent = column.name;
+            if (sides.left) {
+              const handle = document.createElement("span");
+              handle.className = "fk-handle left";
+              name.append(handle);
+            }
+            const type = document.createElement("td");
+            type.dataset.slot = "table-cell";
+            type.className = "fk-type p-2 align-middle font-mono text-xs text-muted-foreground";
+            type.textContent = column.type;
+            const extra = document.createElement("td");
+            extra.dataset.slot = "table-cell";
+            extra.className = "fk-extra relative p-2 text-right align-middle font-mono text-xs text-muted-foreground";
+            const dflt = document.createElement("span");
+            dflt.className = "block max-w-20 truncate";
+            dflt.textContent = column.dflt;
+            extra.append(dflt);
+            if (sides.right) {
+              const handle = document.createElement("span");
+              handle.className = "fk-handle right";
+              extra.append(handle);
+            }
+            row.append(name, type, extra);
+            body.append(row);
+          });
+          grid.append(body);
+          card.append(title, grid);
+          function openCard() {
+            state.mode = "rows";
+            withBusy(function () { return showTable(table.name, 0); });
+          }
+          card.addEventListener("click", openCard);
+          card.addEventListener("keydown", function (event) {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            openCard();
+          });
+          stack.append(card);
+        });
+        cols.append(stack);
+      });
+      board.append(cols);
+      drawEdges();
     }
 
     document.getElementById("login-form").addEventListener("submit", function (event) {
@@ -1019,9 +3450,56 @@
       setMode("create");
     });
 
+    document.getElementById("new-index").addEventListener("click", function () {
+      withBusy(function () { return openIndex(state.selected); });
+    });
+
+    document.getElementById("index-table").addEventListener("change", function () {
+      withBusy(refreshIndexColumns);
+    });
+
+    document.getElementById("add-index-column").addEventListener("click", function () {
+      addIndexColumn(true);
+    });
+
+    document.getElementById("index-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      withBusy(async function () {
+        const table = document.getElementById("index-table").value;
+        if (!table) throw new Error("Create a table first.");
+        const indexName = document.getElementById("index-name").value.trim();
+        const unique = document.getElementById("index-unique").checked;
+        const rows = document.querySelectorAll("#index-columns .index-row");
+        if (!rows.length) throw new Error("Add a column.");
+        const seen = {};
+        const parts = [];
+        rows.forEach(function (row) {
+          const col = row.querySelector(".index-col").value;
+          if (!state.indexColumns.some(function (column) { return column.name === col; })) {
+            throw new Error("Choose a column from the table.");
+          }
+          if (seen[col]) throw new Error("That column is already in the index.");
+          seen[col] = true;
+          const order = row.querySelector(".index-order").value === "DESC" ? "DESC" : "ASC";
+          parts.push(quoteIdent(col) + " " + order);
+        });
+        await raw(
+          "CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + userIdent(indexName) +
+            " ON " + quoteIdent(table) + " (" + parts.join(", ") + ")",
+          []
+        );
+        state.mode = "structure";
+        await showTable(table, 0);
+      });
+    });
+
     document.getElementById("refresh").addEventListener("click", function () {
       withBusy(async function () {
         await loadTables();
+        if (state.mode === "graph") {
+          await renderGraph();
+          return;
+        }
         if (state.selected && (state.mode === "rows" || state.mode === "structure")) {
           await showTable(state.selected, state.offset);
         }
@@ -1081,11 +3559,10 @@
         let keys = 0;
         rows.forEach(function (row) {
           const colName = row.querySelector(".col-name").value.trim();
-          const type = row.querySelector(".col-type").value;
-          if (TYPES.indexOf(type) === -1) throw new Error("Unknown column type.");
+          const type = columnType(row.querySelector(".col-type").value);
           const pk = row.querySelector(".col-pk").checked;
           if (pk) keys += 1;
-          defs.push(userIdent(colName) + " " + type + (pk ? " PRIMARY KEY" : ""));
+          defs.push(userIdent(colName) + (type ? " " + type : "") + (pk ? " PRIMARY KEY" : ""));
         });
         if (keys > 1) throw new Error("Choose one primary key.");
         await raw("CREATE TABLE " + userIdent(name) + " (" + defs.join(", ") + ")", []);
@@ -1120,6 +3597,45 @@
     document.getElementById("sql-tab").addEventListener("click", function () {
       setMode("sql");
     });
+
+    document.getElementById("graph-tab").addEventListener("click", function () {
+      withBusy(async function () {
+        setMode("graph");
+        await renderGraph();
+      });
+    });
+
+    document.addEventListener("click", function (event) {
+      closePickers();
+      closeTypeMenus(event.target.closest("[data-slot='combobox']"));
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        closePickers();
+        closeTypeMenus();
+      }
+    });
+    document.getElementById("main").addEventListener("scroll", function (event) {
+      const target = event.target;
+      if (target && target.closest && target.closest("[data-slot='combobox-content']")) return;
+      closePickers();
+      closeTypeMenus();
+    }, true);
+    bindPicker(document.getElementById("index-table"));
+
+    const graphBoard = document.getElementById("graph-board");
+    if (window.ResizeObserver && graphBoard) {
+      let graphQueued = false;
+      const graphObserver = new ResizeObserver(function () {
+        if (graphQueued || state.mode !== "graph") return;
+        graphQueued = true;
+        requestAnimationFrame(function () {
+          graphQueued = false;
+          if (state.mode === "graph") drawEdges();
+        });
+      });
+      graphObserver.observe(graphBoard);
+    }
 
     resetCreateForm();
     document.getElementById("token").value = storageGet("osd1.token") || "";

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,20 +19,47 @@
     <meta name="twitter:image:alt" content="OSD1. The database is a file. 111,075 requests per second at 32 clients on an Apple M4.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ '/assets/css/osd1.css' | relative_url }}">
   </head>
   <body>
     {% include nav.html %}
-    <main class="wrap">
+    <main class="mx-auto w-full max-w-3xl px-4 py-8">
       {{ content }}
     </main>
-    <footer class="site-foot">
-      <div class="wrap foot-row">
+    <footer class="border-t">
+      <div class="mx-auto flex max-w-5xl flex-wrap gap-x-4 gap-y-2 px-4 py-4 text-sm text-muted-foreground">
         <span>OSD1</span>
-        <a href="https://github.com/SpringWinter-Research/OSD1/blob/main/LICENSE">MIT</a>
-        <a href="https://github.com/SpringWinter-Research/OSD1">Source</a>
+        <a class="text-muted-foreground no-underline hover:text-foreground" href="https://github.com/SpringWinter-Research/OSD1/blob/main/LICENSE">MIT</a>
+        <a class="text-muted-foreground no-underline hover:text-foreground" href="https://github.com/SpringWinter-Research/OSD1">Source</a>
       </div>
     </footer>
+    <script>
+      (function () {
+        var trigger = document.getElementById("docs-menu-trigger");
+        var menu = document.getElementById("docs-menu");
+        if (!trigger || !menu) return;
+        var item = trigger.closest("[data-slot=navigation-menu-item]");
+        function setOpen(open) {
+          trigger.setAttribute("aria-expanded", open ? "true" : "false");
+          trigger.setAttribute("data-state", open ? "open" : "closed");
+          menu.setAttribute("data-state", open ? "open" : "closed");
+          menu.hidden = !open;
+        }
+        setOpen(false);
+        trigger.addEventListener("click", function () {
+          setOpen(menu.hidden);
+        });
+        document.addEventListener("click", function (event) {
+          if (item && !item.contains(event.target)) setOpen(false);
+        });
+        document.addEventListener("keydown", function (event) {
+          if (event.key === "Escape" && !menu.hidden) {
+            setOpen(false);
+            trigger.focus();
+          }
+        });
+      })();
+    </script>
   </body>
 </html>

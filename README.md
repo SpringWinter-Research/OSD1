@@ -2,6 +2,8 @@
 
 OSD1 is an HTTP server for one SQLite database. You send native SQLite SQL. `/query` and `/raw` follow the Cloudflare D1 REST shape used by the official [`cloudflare`](https://www.npmjs.com/package/cloudflare) TypeScript SDK.
 
+Simple mode is the default: one process and one database file. Raft mode is optional. It replicates writes across several processes, and a process chooses it only at startup.
+
 [Documentation](https://springwinter-research.github.io/OSD1/) · [Image](https://gallery.ecr.aws/c5l0h3s1/osd1) · [License: MIT](LICENSE)
 
 ## Quick start
@@ -47,7 +49,7 @@ From source:
 cargo run -p osd1-server
 ```
 
-`OSD1_DB_PATH` defaults to `./data/osd1.db` and `OSD1_HTTP_ADDR` defaults to `127.0.0.1:8080`.
+That command starts simple mode. `OSD1_DB_PATH` defaults to `./data/osd1.db` and `OSD1_HTTP_ADDR` defaults to `127.0.0.1:8080`. Raft mode is described under [Modes](#modes).
 
 ## Usage
 
@@ -93,7 +95,48 @@ Parameters may be null, text, integers, or finite floats. `BEGIN`, `COMMIT`, `RO
 - A table explorer at `/` and `/explorer`
 - `GET /metrics` in Prometheus text format, for Grafana
 - Optional Litestream sidecar for backup to S3
+- Optional Raft mode: followers serve local reads and forward writes to the leader
 - Published images for `linux/arm64` and `linux/amd64`
+
+## Modes
+
+Simple mode never opens a Raft log. Leave `OSD1_NODE_ID` and every `OSD1_RAFT_*` variable unset. The quick start above is simple mode.
+
+Raft mode starts when any of those variables is set. The process then requires `OSD1_NODE_ID`, `OSD1_RAFT_LISTEN`, `OSD1_RAFT_SECRET`, and exactly one of `OSD1_RAFT_BOOTSTRAP=1` or `OSD1_RAFT_JOIN`. A running process stays in the mode it started in.
+
+```bash
+# First node. This bootstraps the cluster.
+OSD1_NODE_ID=1 \
+OSD1_RAFT_LISTEN=127.0.0.1:7001 \
+OSD1_RAFT_SECRET=raft-secret \
+OSD1_RAFT_BOOTSTRAP=1 \
+OSD1_HTTP_ADDR=127.0.0.1:8080 \
+OSD1_DB_PATH=./data/node1.db \
+OSD1_API_TOKEN=dev-token \
+cargo run -p osd1-server
+
+# Second node. It joins the first node's raft address.
+OSD1_NODE_ID=2 \
+OSD1_RAFT_LISTEN=127.0.0.1:7002 \
+OSD1_RAFT_SECRET=raft-secret \
+OSD1_RAFT_JOIN=127.0.0.1:7001 \
+OSD1_HTTP_ADDR=127.0.0.1:8081 \
+OSD1_DB_PATH=./data/node2.db \
+OSD1_API_TOKEN=dev-token \
+cargo run -p osd1-server
+```
+
+Each process has its own database file, HTTP port, node id, and raft port. Every node uses the same `OSD1_RAFT_SECRET`. `OSD1_RAFT_BOOTSTRAP` also accepts `true`.
+
+The bootstrap process is the first leader. A joined node becomes a voting member. Clients call `/query` and `/raw` on any node's HTTP address. A follower serves reads from its own file and sets `served_by_primary` to false. It forwards writes to the leader and returns the usual 200 envelope. `served_by_region` stays `WNAM`.
+
+A write commits when a majority has stored the log entry. Two nodes commit only after both have stored it. Three nodes commit after two.
+
+The Raft log is in memory. Restarting a process drops it. A restarted process must not rejoin a live cluster with its old database file. Litestream, when you run it, stays a sidecar of the leader. Replication is the Raft log.
+
+Raft mode refuses `random`, `randomblob`, `date`, `time`, `datetime`, `julianday`, `strftime`, `unixepoch`, `current_date`, `current_time`, and `current_timestamp`, so a committed statement replays the same way on every node. `last_insert_rowid` stays allowed.
+
+`/metrics` adds `osd1_raft_role`, `osd1_raft_term`, `osd1_raft_commit_index`, `osd1_raft_apply_index`, and `osd1_raft_peers` in raft mode. `osd1_raft_role` is 0 for a follower, 1 for a leader, 2 for a candidate, and 3 for a learner.
 
 ## Configuration
 
@@ -107,6 +150,11 @@ Parameters may be null, text, integers, or finite floats. `BEGIN`, `COMMIT`, `RO
 | `OSD1_MAX_RESPONSE_BYTES` | 1 MiB | Largest success JSON |
 | `OSD1_REQUEST_TIMEOUT_MS` | `30000` | `0` waits without a deadline |
 | `OSD1_SERVED_BY_COLO` | `LOC` | Value copied into result metadata |
+| `OSD1_NODE_ID` | unset | Raft node id, a `u64`. Set with the variables below to leave simple mode |
+| `OSD1_RAFT_LISTEN` | unset | Raft TCP address, `host:port` |
+| `OSD1_RAFT_SECRET` | unset | Shared secret on the raft port |
+| `OSD1_RAFT_BOOTSTRAP` | unset | `1` or `true` starts a new cluster |
+| `OSD1_RAFT_JOIN` | unset | Raft address of a node already in the cluster |
 
 A directory OSD1 creates is mode `0700`. The database, WAL, and shared-memory files are mode `0600`. The API token is redacted from the startup log.
 

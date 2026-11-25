@@ -618,7 +618,7 @@ impl RaftStorage<TypeConfig> for SqlStore {
             return Ok(());
         }
         let min_index = batch.iter().map(|entry| entry.log_id.index).min().unwrap();
-        let job = {
+        let (job, log_bytes, log_durable_index, log_v2) = {
             let mut inner = self.inner.write().await;
             let overlap = inner
                 .log_durable_index
@@ -627,13 +627,27 @@ impl RaftStorage<TypeConfig> for SqlStore {
             for entry in batch {
                 inner.log.insert(entry.log_id.index, entry);
             }
-            if overlap || !inner.log_v2 {
+            let log_bytes = inner.log_bytes;
+            let log_durable_index = inner.log_durable_index;
+            let log_v2 = inner.log_v2;
+            let job = if overlap || !inner.log_v2 {
                 LogJob::Rewrite(inner.plan_rewrite()?)
             } else {
                 LogJob::Append(inner.plan_append()?)
-            }
+            };
+            (job, log_bytes, log_durable_index, log_v2)
         };
-        write_log_job(job).await
+        let rewrite = matches!(job, LogJob::Rewrite(_));
+        if let Err(error) = write_log_job(job).await {
+            let mut inner = self.inner.write().await;
+            inner.log_bytes = log_bytes;
+            inner.log_durable_index = log_durable_index;
+            // A failed rewrite can leave a newer entry on an index the file
+            // still has. Clearing log_v2 makes the next append rewrite it.
+            inner.log_v2 = if rewrite { false } else { log_v2 };
+            return Err(error);
+        }
+        Ok(())
     }
 
     async fn delete_conflict_logs_since(

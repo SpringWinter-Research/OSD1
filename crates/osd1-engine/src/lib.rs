@@ -1316,6 +1316,11 @@ fn replace_database_file(path: &Path, bytes: &[u8]) -> Result<(), SqlError> {
         message: error.to_string(),
     })?;
     restrict_database_files(path);
+    if let Some(dir) = path.parent() {
+        if let Ok(dir_file) = fs::File::open(dir) {
+            let _ = dir_file.sync_all();
+        }
+    }
     Ok(())
 }
 
@@ -2659,6 +2664,19 @@ mod tests {
         restored.install_main(bytes).expect("install");
         let rows = run(&restored, "SELECT n FROM t", vec![]).unwrap();
         assert_eq!(rows.statements[0].rows, vec![vec![SqlValue::Integer(4)]]);
+    }
+
+    #[test]
+    fn replace_database_file_drops_the_wal_and_keeps_the_new_bytes() {
+        let path = temp_db("install-bytes");
+        fs::write(&path, b"old-database").unwrap();
+        let wal = PathBuf::from(format!("{}-wal", path.display()));
+        fs::write(&wal, b"wal-sidecar").unwrap();
+        let bytes = b"new-database-bytes".to_vec();
+        replace_database_file(&path, &bytes).expect("install");
+        assert!(!wal.exists(), "wal sidecar was not removed");
+        assert_eq!(fs::read(&path).expect("database"), bytes);
+        let _ = fs::remove_file(&path);
     }
 
     #[test]

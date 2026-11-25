@@ -448,6 +448,119 @@ async fn log_appends_do_not_rewrite_the_prefix() {
 }
 
 #[tokio::test]
+async fn a_failed_append_does_not_advance_the_durable_cursor() {
+    use openraft::storage::RaftLogReader;
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-log-rollback-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut store = SqlStore::open(&dir).expect("open");
+    let entry = |index: u64| Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), index),
+        payload: EntryPayload::Blank,
+    };
+    store.append_to_log([entry(1)]).await.expect("append 1");
+    let log_path = dir.join("log.dat");
+    std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o000)).expect("chmod 0");
+    let failed = store.append_to_log([entry(2)]).await;
+    std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o600)).expect("chmod 600");
+    assert!(
+        failed.is_err(),
+        "unwritable log.dat accepted the append: {failed:?}"
+    );
+    let mut disk = SqlStore::open(&dir).expect("reopen");
+    let on_disk = disk.try_get_log_entries(..).await.expect("entries");
+    assert!(
+        on_disk.iter().all(|entry| entry.log_id.index != 2),
+        "failed append reached disk: {on_disk:?}"
+    );
+    assert_eq!(on_disk.len(), 1);
+    drop(disk);
+    store.append_to_log([entry(3)]).await.expect("append 3");
+    let mut reopened = SqlStore::open(&dir).expect("reopen after retry");
+    let indexes: Vec<u64> = reopened
+        .try_get_log_entries(..)
+        .await
+        .expect("entries")
+        .into_iter()
+        .map(|entry| entry.log_id.index)
+        .collect();
+    assert_eq!(indexes, vec![1, 2, 3]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_failed_rewrite_is_written_on_the_next_append() {
+    use openraft::storage::RaftLogReader;
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-log-rewrite-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut store = SqlStore::open(&dir).expect("open");
+    let normal = |index: u64, sql: &str| Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), index),
+        payload: EntryPayload::Normal(command(index, sql)),
+    };
+    store
+        .append_to_log([normal(1, "select 1")])
+        .await
+        .expect("append 1");
+    // A rewrite writes log.dat.tmp and renames it. An unwritable log.dat
+    // does not stop that. An unwritable directory does.
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).expect("chmod dir");
+    let failed = store.append_to_log([normal(1, "select 2")]).await;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).expect("chmod dir back");
+    assert!(
+        failed.is_err(),
+        "unwritable directory accepted the rewrite: {failed:?}"
+    );
+    store
+        .append_to_log([normal(2, "select 3")])
+        .await
+        .expect("append 2");
+    let mut reopened = SqlStore::open(&dir).expect("reopen");
+    let sql_at = |entries: &[Entry<TypeConfig>], index: u64| {
+        entries.iter().find_map(|entry| {
+            if entry.log_id.index != index {
+                return None;
+            }
+            match &entry.payload {
+                EntryPayload::Normal(command) => Some(command.sql.clone()),
+                _ => None,
+            }
+        })
+    };
+    let entries = reopened.try_get_log_entries(..).await.expect("entries");
+    assert_eq!(sql_at(&entries, 1).as_deref(), Some("select 2"));
+    assert_eq!(sql_at(&entries, 2).as_deref(), Some("select 3"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn a_bad_log_checksum_refuses_to_open() {
     use openraft::storage::RaftStorage;
     use openraft::CommittedLeaderId;

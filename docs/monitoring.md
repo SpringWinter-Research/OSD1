@@ -1,14 +1,15 @@
 ---
 title: Monitoring
+description: Prometheus series, scrape setup, and the health ready flag.
 ---
 
 # Monitoring
 
-`GET /metrics` speaks the Prometheus text format (`text/plain; version=0.0.4`). Point a Prometheus scrape job at it, then use that data source in Grafana.
+`GET /metrics` uses the Prometheus text format (`text/plain; version=0.0.4`). Point a Prometheus scrape job at it. Then use that data source in Grafana.
 
-The route does not check the bearer token and does not run SQL. Labels are a fixed set. SQL text, parameters, account ids, and database ids are not labels.
+The route does not check the bearer token. The route does not execute SQL. Labels are a fixed set. SQL text, parameters, account ids, and database ids are not labels.
 
-A scrape shows rates, latency, queue depth, rows, and the main database file size. It does not show the API token.
+A scrape shows rates, latency, queue depth, rows, and the size of the main database file. It does not show the API token.
 
 ## Scrape
 
@@ -20,45 +21,47 @@ scrape_configs:
       - targets: ["127.0.0.1:8080"]
 ```
 
-Use the address OSD1 listens on. The image listens on port 8080 inside the container, so a Prometheus running on the host uses the published port. No bearer token is required.
+Use the address OSD1 listens on. The image listens on port 8080 inside the container. A Prometheus process on the host uses the published port. No bearer token is required.
 
-`deploy/grafana/osd1.json` is a dashboard you can import. In Grafana open Dashboards, Import, upload that file, and choose the Prometheus data source.
+`deploy/grafana/osd1.json` is a dashboard you can import. In Grafana, open Dashboards, choose Import, upload that file, and choose the Prometheus data source.
 
 ## Series
 
 | Name | Labels | Meaning |
 | --- | --- | --- |
 | `osd1_http_requests_total` | `route`, `status` | HTTP responses. `route` is `health`, `metrics`, `query`, `raw`, `explorer`, or `other`. `/` and `/explorer` use `explorer`. `status` is `200`, `400`, `401`, `413`, `429`, `500`, `503`, `504`, or `other` |
-| `osd1_http_request_duration_seconds` | `route` | Time in the handler, including queue wait and JSON encoding |
+| `osd1_http_request_duration_seconds` | `route` | Time in the handler. This includes queue wait and JSON encoding |
 | `osd1_sql_requests_total` | `result`, `route` | Requests that reached the queue. `result` is `ok`, `sql_error`, `queue_full`, `timeout`, `shut_down`, or `response_too_large`. `route` is `query` or `raw` |
 | `osd1_sql_duration_seconds` | `route` | Time on the SQL thread. Queue wait is not included. Recorded when the result is `ok` or `response_too_large` |
 | `osd1_sql_statements_total` | | Statements inside those finished requests |
 | `osd1_rows_read_total` | | Rows returned |
 | `osd1_rows_written_total` | | Rows written, from `sqlite3_total_changes` |
 | `osd1_database_size_bytes` | | Length of the main database file after the latest finished request. The WAL is not included |
-| `osd1_sql_inflight` | | Accepted requests that have not finished, including the one running on the SQL thread |
+| `osd1_sql_inflight` | | Accepted requests that have not finished. This count includes the request on the SQL thread |
 | `osd1_sql_queue_capacity` | | How many requests may wait. The running request is outside this bound |
-| `osd1_build_info` | `version` | Always `1` |
-| `osd1_process_start_time_seconds` | | Unix time when this process started exporting metrics |
+| `osd1_build_info` | `version` | Always `1`. The version label comes from the package version |
+| `osd1_process_start_time_seconds` | | Unix time when this process started to export metrics |
 | `osd1_raft_role` | | Raft only. 0 follower, 1 leader, 2 candidate, 3 learner |
 | `osd1_raft_term` | | Raft only. Current term |
 | `osd1_raft_commit_index` | | Raft only. Highest committed index on this node |
-| `osd1_raft_apply_index` | | Raft only. Highest index applied to this node's file |
+| `osd1_raft_apply_index` | | Raft only. Highest index applied to the file on this node |
 | `osd1_raft_apply_lag` | | Raft only. Committed entries not yet applied on this node. `/health` sets `ready` false above 32 |
-| `osd1_raft_peers` | | Raft only. Voters and learners in the current config, including this node |
+| `osd1_raft_peers` | | Raft only. Voters and learners in the current config. This count includes this node |
 | `osd1_litestream_last_ok_seconds` | | Present when `OSD1_LITESTREAM_HEARTBEAT` is set. Unix time of the heartbeat file, or 0 when the file is absent |
 
-`/health` stays HTTP 200 while the process is up. In raft mode `ready` is false when `osd1_raft_apply_lag` is above 32. A process healthcheck that only checks the status code leaves that node running. The image healthcheck is `wget` of `/health`. Read `ready`, or alert on the gauge. Simple mode reports `ready` true and does not export the raft gauges. A node that is leaving returns HTTP 503 and `{"ok":false,"ready":false}`. New SQL on that node is rejected and is not queued.
+`/health` stays HTTP 200 while the process is up. In raft mode, `ready` is false when `osd1_raft_apply_lag` is above 32. A process health check that only checks the status code leaves that node running. The image health check is `wget` of `/health`. Read `ready`, or alert on the gauge. Simple mode reports `ready` true and does not export the raft gauges. A node that is leaving returns HTTP 503 and `{"ok":false,"ready":false}`. New SQL on that node is rejected and is not queued.
 
-`deploy/prometheus-alerts.yml` defines `Osd1ReplicaStale`. It fires when `osd1_litestream_last_ok_seconds` is above 0 and more than 60 seconds behind wall time, for 1 minute. A 0 gauge means the sidecar has not confirmed a generation yet, and the alert stays quiet.
+`deploy/prometheus-alerts.yml` defines `Osd1ReplicaStale`. It fires when `osd1_litestream_last_ok_seconds` is above 0 and more than 60 seconds behind wall time, for 1 minute. A 0 gauge means the sidecar has not confirmed a generation yet. The alert stays quiet.
 
 Histogram buckets run from 50 microseconds to 10 seconds.
 
-The scrape request itself is counted on the next scrape. The handler encodes the text, then the middleware records the response.
+The scrape request itself is counted on the next scrape. The handler encodes the text. The middleware then records the response.
 
-A missing token, a bad body, and an empty `sql` field increment the HTTP counter only. They never reach the queue, so they do not increment `osd1_sql_requests_total`. A body over the size limit is HTTP 413 and also does not run SQL.
+A missing token, a bad body, and an empty `sql` field increment the HTTP counter only. They never reach the queue, so they do not increment `osd1_sql_requests_total`. A body over the size limit is HTTP 413 and also does not execute SQL.
 
-`osd1_sql_inflight` can be one higher than `osd1_sql_queue_capacity`, because the request running on the SQL thread is not sitting in the queue.
+`osd1_sql_inflight` can be one higher than `osd1_sql_queue_capacity`. The request on the SQL thread is not in the queue.
+
+Raft gauges are set together every 200 ms, and once at startup. Simple mode leaves them off the scrape.
 
 ## Queries
 
@@ -98,4 +101,4 @@ osd1_database_size_bytes
 
 ## What a scrape can see
 
-Anyone who can open `GET /metrics` can see those rates, latencies, the queue, row counts, and the main file size. Keep the listen address on a network that should have that view. `/query` and `/raw` still require the bearer token when `OSD1_API_TOKEN` is set.
+Anyone who can open `GET /metrics` can see those rates, those latencies, the queue, the row counts, and the main file size. Keep the listen address on a network that should have that view. `/query` and `/raw` still require the bearer token when `OSD1_API_TOKEN` is set.

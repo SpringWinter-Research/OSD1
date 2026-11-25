@@ -9,15 +9,17 @@ description: As-built design of the SQL thread, the D1 HTTP surface, and the raf
 | --- | --- |
 | Author | OSD1 |
 | Date | 2026-11-25 |
-| Status | As-built draft |
+| Status | As-built |
 | Binary | `osd1` (`crates/osd1-server`, package `osd1-server` 0.1.0) |
 | Consensus library | openraft 0.9.25, features `serde` and `single-term-leader`. `storage-v2` is off |
 
 This document describes the system that is in the tree. It is a review artifact for a database engineer. It does not propose new mechanisms.
 
+Read [Architecture](architecture.md) for the three layers: the HTTP client, raft distribution, and the SQL file. Read [Low-level design](low-level.md) for the locks, the log record, and `execute_idempotent`. This page is the as-built review of those choices.
+
 <figure>
   <img src="assets/arch-low.svg" alt="Low-level path on one node: command-id fsync, Adaptor-locked append, apply on the state-machine worker, execute_idempotent on osd1-sql, the leader and follower read split, and snapshot build, send, and install." width="760">
-  <figcaption>Low-level diagram of one node. The same picture is on the <a href="architecture.md">architecture</a> page.</figcaption>
+  <figcaption>Figure 1. Locks and threads on one node. The call order is on the <a href="low-level.md">low-level design</a> page.</figcaption>
 </figure>
 
 ## Overview
@@ -645,6 +647,8 @@ None. Behavior the source settles is under Key Decisions. Work the source leaves
 ## References
 
 - `AGENTS.md` — invariants and crate ownership
+- `docs/architecture.md` — client, distribution, and storage
+- `docs/low-level.md` — locks, the log record, and idempotent apply
 - `README.md`, `docs/index.md` — operator surface and the 6 November 2026 simple-mode numbers
 - `docs/compatibility.md` — `cloudflare@4.5.0` envelope and the differences list
 - `docs/backup-restore.md` — Litestream and the raft restore steps. `scripts/recovery.sh` exit 0 dated 2026-11-06
@@ -778,7 +782,7 @@ The slices below are a logical decomposition of the tree: each slice is one beha
 
 ### PR 17 — Copy this design into `docs/system-design.md`
 
-- Status: this file. Linked from `README.md`, `docs/index.md`, `docs/architecture.md`, and `docs/_includes/nav.html`.
+- Status: this file. Linked from `README.md`, `docs/index.md`, `docs/architecture.md`, and `docs/_includes/sidebar.html`.
 - Files: `docs/system-design.md`
 - Dependencies: PR 1 through PR 16, because the page describes those slices
 - Description: This as-built design sits next to the operator docs. No runtime change. No new consensus, no pool, no second live connection, no HTTP membership API, no openraft upgrade, no WAL gauge.

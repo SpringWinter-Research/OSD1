@@ -135,7 +135,7 @@ A read that sends `x-osd1-min-commit-index` waits until this node's apply index 
 
 A write commits when a majority of the voters has stored the log entry. Two voters commit only after both have stored it. Three voters commit after two. Learners do not change that count.
 
-The append-only log, the vote, the membership, and the next command id are files in `<database>.raft` beside the database file. `log.dat` starts with `OSD1LOG2`. Each record carries a CRC-32 of its payload. Applied results live in the SQLite table `osd1_applied`, in the same transaction as the user SQL. After the log purges an index, a stored body applied in the last 3 seconds stays until a later purge. That clock is memory on the SQL thread, so a restart drops it. Snapshots copy pages with SQLite’s backup API. The layout, the write path, and the byte formats are in [Architecture](docs/architecture.md).
+The append-only log, the vote, the membership, and the next command id are files in `<database>.raft` beside the database file. `log.dat` starts with `OSD1LOG2`. Each record carries a CRC-32 of its payload. Applied results live in the SQLite table `osd1_applied`, in the same transaction as the user SQL. After the log purges an index, a stored body applied in the last 3 seconds stays until a later purge. That clock is memory on the SQL thread, so a restart drops it. Snapshots copy pages with SQLite’s backup API. The layer picture is in [Architecture](docs/architecture.md). Locks, the log record, and the apply path are in [Low-level design](docs/low-level.md). The review is in [System design](docs/system-design.md).
 
 Restart a process with the same node id, the same `OSD1_RAFT_LISTEN`, and the same `OSD1_DB_PATH`. An existing raft directory skips bootstrap and join. Bind every voter again before expecting a new write: one voter by itself cannot form a majority, and the process stays up until the others return. A fresh directory still needs `OSD1_RAFT_BOOTSTRAP=1` or `OSD1_RAFT_JOIN`.
 
@@ -225,6 +225,7 @@ Docker checks use port 8080. Run them one at a time:
 
 - [Architecture](docs/architecture.md)
 - [System design](docs/system-design.md)
+- [Low-level design](docs/low-level.md)
 - [API examples](docs/api-examples.md)
 - [SDK compatibility](docs/compatibility.md)
 - [Operations](docs/operations.md)

@@ -1,0 +1,26 @@
+<aside id="docs-sidebar" class="docs-sidebar">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-label">Get started</p>
+    <a {% if page.name == "index.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/' | relative_url }}">Overview</a>
+    <a href="{{ '/#quick-start' | relative_url }}">Quick start</a>
+
+    <p class="docs-nav-label">Architecture</p>
+    <a {% if page.name == "architecture.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/architecture.html' | relative_url }}">Overview</a>
+    <a {% if page.name == "system-design.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/system-design.html' | relative_url }}">System design</a>
+    <a {% if page.name == "low-level.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/low-level.html' | relative_url }}">Low-level design</a>
+
+    <p class="docs-nav-label">Develop</p>
+    <a {% if page.name == "api-examples.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/api-examples.html' | relative_url }}">API examples</a>
+    <a {% if page.name == "compatibility.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/compatibility.html' | relative_url }}">SDK compatibility</a>
+
+    <p class="docs-nav-label">Operate</p>
+    <a {% if page.name == "operations.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/operations.html' | relative_url }}">Operations</a>
+    <a {% if page.name == "monitoring.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/monitoring.html' | relative_url }}">Monitoring</a>
+    <a {% if page.name == "backup-restore.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/backup-restore.html' | relative_url }}">Backup and restore</a>
+
+    <p class="docs-nav-label">Reference</p>
+    <a {% if page.name == "benchmark.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/benchmark.html' | relative_url }}">Benchmark</a>
+    <a {% if page.name == "testing.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/testing.html' | relative_url }}">Testing</a>
+    <a {% if page.name == "security-scan.md" %}class="is-current" aria-current="page"{% endif %} href="{{ '/security-scan.html' | relative_url }}">Security scan</a>
+  </nav>
+</aside>

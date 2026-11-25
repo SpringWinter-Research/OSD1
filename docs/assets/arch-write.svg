@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 392" role="img" aria-labelledby="archWriteTitle archWriteDesc">
+  <title id="archWriteTitle">Follower write through raft</title>
+  <desc id="archWriteDesc">A follower allocates a command id and syncs it, forwards the pair to the leader, the leader appends a checksummed log suffix and fsyncs it, a majority commits, and the SQL thread stores the result in osd1_applied in the same transaction as the user SQL.</desc>
+  <style>
+    .box { fill: #141416; stroke: #2e2e38; }
+    .accent { fill: #102418; stroke: #3DDC84; }
+    .label { fill: #fafafa; font: 600 13px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .sub { fill: #a3b5a6; font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .n { fill: #3DDC84; font: 600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .muted { fill: #8a8a93; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .rail { stroke: #3DDC84; stroke-width: 1.5; }
+  </style>
+  <rect width="720" height="392" fill="#0a0a0a"/>
+  <line class="rail" x1="36" y1="28" x2="36" y2="332"/>
+  <g>
+    <text class="n" x="28" y="46">1</text>
+    <rect class="box" x="56" y="28" width="400" height="44" rx="8"/>
+    <text class="label" x="72" y="46">Follower HTTP</text>
+    <text class="sub" x="72" y="62">/query or /raw · local reads never take this path</text>
+  </g>
+  <g>
+    <text class="n" x="28" y="102">2</text>
+    <rect class="accent" x="56" y="84" width="400" height="44" rx="8"/>
+    <text class="label" x="72" y="102">next-command-id</text>
+    <text class="sub" x="72" y="118">fsync the pair (origin, id) before propose</text>
+  </g>
+  <g>
+    <text class="n" x="28" y="158">3</text>
+    <rect class="box" x="56" y="140" width="400" height="44" rx="8"/>
+    <text class="label" x="72" y="158">Raft TCP</text>
+    <text class="sub" x="72" y="174">same pair, retried while leadership moves</text>
+  </g>
+  <g>
+    <text class="n" x="28" y="214">4</text>
+    <rect class="accent" x="56" y="196" width="400" height="44" rx="8"/>
+    <text class="label" x="72" y="214">log.dat suffix</text>
+    <text class="sub" x="72" y="230">OSD1LOG2 record · CRC-32 · fsync on the raft core</text>
+  </g>
+  <g>
+    <text class="n" x="28" y="270">5</text>
+    <rect class="box" x="56" y="252" width="400" height="44" rx="8"/>
+    <text class="label" x="72" y="270">Majority</text>
+    <text class="sub" x="72" y="286">2 of 3 voters · learners do not count</text>
+  </g>
+  <g>
+    <text class="n" x="28" y="326">6</text>
+    <rect class="accent" x="56" y="308" width="400" height="44" rx="8"/>
+    <text class="label" x="72" y="326">SQL thread</text>
+    <text class="sub" x="72" y="342">user SQL and osd1_applied.body, one transaction</text>
+  </g>
+  <text class="muted" x="56" y="376">A replay of the same pair returns the stored body. Heartbeat 50 ms. Election 150–300 ms.</text>
+  <g>
+    <rect class="box" x="476" y="28" width="228" height="324" rx="8"/>
+    <text class="label" x="492" y="52">On the leader</text>
+    <text class="sub" x="492" y="78">append holds the core</text>
+    <text class="sub" x="492" y="96">until the suffix is durable</text>
+    <text class="label" x="492" y="132">On apply</text>
+    <text class="sub" x="492" y="158">state-machine worker</text>
+    <text class="sub" x="492" y="176">store lock is free</text>
+    <text class="label" x="492" y="212">Snapshot</text>
+    <text class="sub" x="492" y="238">every 256 commits</text>
+    <text class="sub" x="492" y="256">backup API, 100 pages</text>
+    <text class="sub" x="492" y="274">lock released during copy</text>
+    <text class="label" x="492" y="310">Read</text>
+    <text class="sub" x="492" y="336">local file</text>
+  </g>
+</svg>

@@ -2,6 +2,7 @@
 //!
 //! Labels stay on a fixed set. SQL text, account ids, and database ids are not series.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -35,6 +36,12 @@ struct Inner {
     inflight: IntGauge,
     queue_capacity: IntGauge,
     raft: std::sync::Mutex<Option<RaftGauges>>,
+    litestream: std::sync::Mutex<Option<LitestreamGauge>>,
+}
+
+struct LitestreamGauge {
+    path: PathBuf,
+    last_ok: IntGauge,
 }
 
 struct RaftGauges {
@@ -42,8 +49,12 @@ struct RaftGauges {
     term: IntGauge,
     commit_index: IntGauge,
     apply_index: IntGauge,
+    apply_lag: IntGauge,
     peers: IntGauge,
 }
+
+/// A node this far behind its commit index is not ready for reads.
+pub const APPLY_LAG_NOT_READY: u64 = 32;
 
 pub struct SqlObservation {
     pub seconds: f64,
@@ -152,8 +163,41 @@ impl Metrics {
                 inflight,
                 queue_capacity,
                 raft: std::sync::Mutex::new(None),
+                litestream: std::sync::Mutex::new(None),
             }),
         }
+    }
+
+    /// Export the mtime of the file the Litestream sidecar touches after a good replica check.
+    /// Absent file stays 0, and the alert ignores 0.
+    pub fn enable_litestream(&self, path: PathBuf) {
+        let mut slot = self.inner.litestream.lock().expect("litestream metrics");
+        if slot.is_some() {
+            return;
+        }
+        let last_ok = gauge(
+            "osd1_litestream_last_ok_seconds",
+            "Unix time of the newest Litestream replica check. 0 means no check yet",
+        );
+        self.inner
+            .registry
+            .register(Box::new(last_ok.clone()))
+            .expect("litestream metric name is unique");
+        *slot = Some(LitestreamGauge { path, last_ok });
+    }
+
+    pub fn refresh_litestream(&self) {
+        let slot = self.inner.litestream.lock().expect("litestream metrics");
+        let Some(gauge) = slot.as_ref() else {
+            return;
+        };
+        let stamp = std::fs::metadata(&gauge.path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs() as i64)
+            .unwrap_or(0);
+        gauge.last_ok.set(stamp);
     }
 
     /// Register the raft series. Simple mode never calls this, so those names
@@ -176,6 +220,10 @@ impl Metrics {
             "osd1_raft_apply_index",
             "Log index applied to this node's database",
         );
+        let apply_lag = gauge(
+            "osd1_raft_apply_lag",
+            "Committed log entries this node has not applied yet",
+        );
         let peers = gauge(
             "osd1_raft_peers",
             "Nodes in the current membership, including this one",
@@ -185,6 +233,7 @@ impl Metrics {
             Box::new(term.clone()),
             Box::new(commit_index.clone()),
             Box::new(apply_index.clone()),
+            Box::new(apply_lag.clone()),
             Box::new(peers.clone()),
         ] {
             self.inner
@@ -197,6 +246,7 @@ impl Metrics {
             term,
             commit_index,
             apply_index,
+            apply_lag,
             peers,
         });
     }
@@ -210,7 +260,16 @@ impl Metrics {
         gauges.term.set(term as i64);
         gauges.commit_index.set(commit as i64);
         gauges.apply_index.set(apply as i64);
+        gauges.apply_lag.set(commit.saturating_sub(apply) as i64);
         gauges.peers.set(peers as i64);
+    }
+
+    /// Entries committed on this node and not yet applied. Zero in simple mode.
+    pub fn apply_lag(&self) -> u64 {
+        let slot = self.inner.raft.lock().expect("raft metrics");
+        slot.as_ref()
+            .map(|gauges| gauges.apply_lag.get().max(0) as u64)
+            .unwrap_or(0)
     }
 
     pub fn observe_http(&self, route: &'static str, status: u16, seconds: f64) {
@@ -297,6 +356,7 @@ fn status_label(status: u16) -> &'static str {
         413 => "413",
         429 => "429",
         500 => "500",
+        503 => "503",
         504 => "504",
         _ => "other",
     }

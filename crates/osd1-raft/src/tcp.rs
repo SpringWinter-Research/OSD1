@@ -42,7 +42,8 @@ use crate::types::TypeConfig;
 
 const MAX_FRAME: usize = 16 * 1024 * 1024;
 const RPC_TIMEOUT: Duration = Duration::from_millis(800);
-const JOIN_TIMEOUT: Duration = Duration::from_secs(10);
+/// Covers snapshot install. Log replay of a long history is no longer the budget.
+const JOIN_TIMEOUT: Duration = Duration::from_secs(120);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
 const KIND_VOTE: u8 = 1;
@@ -50,9 +51,13 @@ const KIND_APPEND: u8 = 2;
 const KIND_SNAPSHOT: u8 = 3;
 const KIND_JOIN: u8 = 4;
 const KIND_WRITE: u8 = 5;
+const KIND_REMOVE: u8 = 6;
+/// The leader tells a dropped member to stop. The membership entry can commit
+/// on the other voters, and this node would keep serving and campaigning.
+const KIND_GONE: u8 = 7;
 
 pub type JoinHook = Arc<
-    dyn Fn(NodeId, String) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>
+    dyn Fn(NodeId, String, bool) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>>
         + Send
         + Sync,
 >;
@@ -90,7 +95,15 @@ impl TcpNode {
         .finish_tcp(advertise.into(), stop_tx);
         let raft = node.raft();
         let hook = Arc::clone(&join_hook);
-        tokio::spawn(accept_loop(listener, raft, secret, hook, stop_rx));
+        let membership = node.membership_lock();
+        let gone = Gone {
+            id: node.id(),
+            store: node.store(),
+            told: node.removal_flag(),
+        };
+        tokio::spawn(accept_loop(
+            listener, raft, secret, hook, membership, gone, stop_rx,
+        ));
         Ok(Self { node, join_hook })
     }
 
@@ -161,6 +174,14 @@ impl RaftNetwork<TypeConfig> for TcpConn {
 struct JoinBody {
     id: NodeId,
     advertise: String,
+    /// Missing on an older caller. Those joins stay learners.
+    #[serde(default)]
+    voter: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RemoveBody {
+    id: NodeId,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -175,14 +196,19 @@ pub struct ClientWriteReply {
     pub leader: Option<NodeId>,
     pub body_json: String,
     pub error: String,
+    /// Log index of the committed write. Zero on an error reply.
+    #[serde(default)]
+    pub commit_index: u64,
 }
 
 /// Ask `addr` to add this node. `addr` is `host:port` of a node that can commit.
+/// `voter` promotes it after catch-up. A reader passes `false` and stays a learner.
 pub async fn join_cluster(
     addr: &str,
     secret: &str,
     id: NodeId,
     advertise: &str,
+    voter: bool,
 ) -> Result<(), String> {
     let reply: JoinReply = match call_for(
         addr,
@@ -191,6 +217,7 @@ pub async fn join_cluster(
         &JoinBody {
             id,
             advertise: advertise.to_string(),
+            voter,
         },
         JOIN_TIMEOUT,
     )
@@ -199,6 +226,20 @@ pub async fn join_cluster(
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(|error| error.to_string())?,
         Err(error) => return Err(error.to_string()),
     };
+    if reply.ok {
+        Ok(())
+    } else {
+        Err(reply.error)
+    }
+}
+
+/// Ask the leader at `addr` to drop `id`. The process that calls this does not join.
+pub async fn remove_member(addr: &str, secret: &str, id: NodeId) -> Result<(), String> {
+    let reply: JoinReply =
+        match call_for(addr, secret, KIND_REMOVE, &RemoveBody { id }, JOIN_TIMEOUT).await {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|error| error.to_string())?,
+            Err(error) => return Err(error.to_string()),
+        };
     if reply.ok {
         Ok(())
     } else {
@@ -219,11 +260,20 @@ pub async fn client_write(
     serde_json::from_slice(&bytes).map_err(|error| error.to_string())
 }
 
+#[derive(Clone)]
+struct Gone {
+    id: NodeId,
+    store: SqlStore,
+    told: Arc<std::sync::atomic::AtomicBool>,
+}
+
 async fn accept_loop(
     listener: TcpListener,
     raft: Raft<TypeConfig>,
     secret: Arc<str>,
     join_hook: Arc<std::sync::Mutex<Option<JoinHook>>>,
+    membership: Arc<tokio::sync::Mutex<()>>,
+    gone: Gone,
     mut stop: watch::Receiver<bool>,
 ) {
     loop {
@@ -238,8 +288,10 @@ async fn accept_loop(
                 let raft = raft.clone();
                 let secret = Arc::clone(&secret);
                 let join_hook = Arc::clone(&join_hook);
+                let membership = Arc::clone(&membership);
+                let gone = gone.clone();
                 tokio::spawn(async move {
-                    let _ = handle_conn(socket, raft, secret, join_hook).await;
+                    let _ = handle_conn(socket, raft, secret, join_hook, membership, gone).await;
                 });
             }
         }
@@ -251,12 +303,14 @@ async fn handle_conn(
     raft: Raft<TypeConfig>,
     secret: Arc<str>,
     join_hook: Arc<std::sync::Mutex<Option<JoinHook>>>,
+    membership: Arc<tokio::sync::Mutex<()>>,
+    gone: Gone,
 ) -> std::io::Result<()> {
     let (kind, body) = read_payload(&mut socket).await?;
     let Some(json) = split_secret(&body, &secret) else {
         return Ok(());
     };
-    let response = dispatch(kind, json, raft, join_hook).await;
+    let response = dispatch(kind, json, raft, &secret, join_hook, membership, gone).await;
     write_payload(&mut socket, 0, b"", &response).await
 }
 
@@ -264,7 +318,10 @@ async fn dispatch(
     kind: u8,
     json: &[u8],
     raft: Raft<TypeConfig>,
+    secret: &Arc<str>,
     join_hook: Arc<std::sync::Mutex<Option<JoinHook>>>,
+    membership: Arc<tokio::sync::Mutex<()>>,
+    gone: Gone,
 ) -> Vec<u8> {
     match kind {
         KIND_VOTE => {
@@ -290,6 +347,8 @@ async fn dispatch(
         }
         KIND_JOIN => join_dispatch(json, raft, join_hook).await,
         KIND_WRITE => write_dispatch(json, raft).await,
+        KIND_REMOVE => remove_dispatch(json, raft, secret, membership).await,
+        KIND_GONE => gone_dispatch(json, gone).await,
         _ => serde_json::to_vec(&JoinReply {
             ok: false,
             error: "unknown raft frame".into(),
@@ -345,13 +404,92 @@ async fn join_dispatch(
             error: "join is not open".into(),
         });
     };
-    match hook(request.id, request.advertise).await {
+    match hook(request.id, request.advertise, request.voter).await {
         Ok(()) => json_reply(JoinReply {
             ok: true,
             error: String::new(),
         }),
         Err(error) => json_reply(JoinReply { ok: false, error }),
     }
+}
+
+async fn remove_dispatch(
+    json: &[u8],
+    raft: Raft<TypeConfig>,
+    secret: &str,
+    membership: Arc<tokio::sync::Mutex<()>>,
+) -> Vec<u8> {
+    let request: RemoveBody = match serde_json::from_slice(json) {
+        Ok(request) => request,
+        Err(error) => {
+            return json_reply(JoinReply {
+                ok: false,
+                error: error.to_string(),
+            })
+        }
+    };
+    let metrics = raft.metrics().borrow().clone();
+    if metrics.state != openraft::ServerState::Leader {
+        return json_reply(JoinReply {
+            ok: false,
+            error: format!("not the leader; leader is {:?}", metrics.current_leader),
+        });
+    }
+    let addr = metrics
+        .membership_config
+        .membership()
+        .get_node(&request.id)
+        .map(|node| raft_half(&node.addr).to_string());
+    let removed = {
+        let _change = membership.lock().await;
+        crate::node::remove_member_from(&raft, request.id).await
+    };
+    match removed {
+        Ok(()) => {
+            if let Some(addr) = addr {
+                let _ = call_for(
+                    &addr,
+                    secret,
+                    KIND_GONE,
+                    &RemoveBody { id: request.id },
+                    RPC_TIMEOUT,
+                )
+                .await;
+            }
+            json_reply(JoinReply {
+                ok: true,
+                error: String::new(),
+            })
+        }
+        Err(error) => json_reply(JoinReply {
+            ok: false,
+            error: error.to_string(),
+        }),
+    }
+}
+
+async fn gone_dispatch(json: &[u8], gone: Gone) -> Vec<u8> {
+    let request: RemoveBody = match serde_json::from_slice(json) {
+        Ok(request) => request,
+        Err(error) => {
+            return json_reply(JoinReply {
+                ok: false,
+                error: error.to_string(),
+            })
+        }
+    };
+    if request.id != gone.id {
+        return json_reply(JoinReply {
+            ok: false,
+            error: "removal was for a different node".into(),
+        });
+    }
+    gone.told.store(true, std::sync::atomic::Ordering::Relaxed);
+    gone.store.mark_removed().await;
+    json_reply(JoinReply {
+        ok: true,
+        error: String::new(),
+    })
 }
 
 async fn write_dispatch(json: &[u8], raft: Raft<TypeConfig>) -> Vec<u8> {
@@ -363,6 +501,7 @@ async fn write_dispatch(json: &[u8], raft: Raft<TypeConfig>) -> Vec<u8> {
                 leader: None,
                 body_json: String::new(),
                 error: error.to_string(),
+                commit_index: 0,
             })
         }
     };
@@ -372,6 +511,7 @@ async fn write_dispatch(json: &[u8], raft: Raft<TypeConfig>) -> Vec<u8> {
             leader: Some(raft.metrics().borrow().id),
             body_json: response.data.body_json,
             error: String::new(),
+            commit_index: response.log_id.index,
         }),
         Err(error) => {
             let leader = error
@@ -382,6 +522,7 @@ async fn write_dispatch(json: &[u8], raft: Raft<TypeConfig>) -> Vec<u8> {
                 leader,
                 body_json: String::new(),
                 error: error.to_string(),
+                commit_index: 0,
             })
         }
     }
@@ -567,6 +708,7 @@ mod tests {
                 id: 1,
                 sql: "create table t(n integer)".into(),
                 params_json: "[]".into(),
+                log_index: 0,
             })
             .await
             .unwrap();
@@ -586,7 +728,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
         }
-        let refused = join_cluster(&a1, "nope", 9, "127.0.0.1:1").await;
+        let refused = join_cluster(&a1, "nope", 9, "127.0.0.1:1", true).await;
         assert!(refused.is_err(), "{refused:?}");
         for node in [&n1, &n2, &n3] {
             node.node.shutdown().await.unwrap();

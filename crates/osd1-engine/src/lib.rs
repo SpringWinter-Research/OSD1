@@ -1,12 +1,18 @@
 //! One OS thread, one SQLite connection, one bounded FIFO queue.
 
+use std::cell::Cell;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvError, SyncSender, TrySendError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// A follower retries one command id for about 3 seconds. Keep that stored
+/// body until a later purge, so the retry does not come back empty.
+const APPLIED_BODY_HOLD: Duration = Duration::from_secs(3);
 
 use osd1_types::{
     EnqueueResult, SqlError, SqlExecutor, SqlRequest, SqlResponse, SqlValue, StatementMeta,
@@ -37,6 +43,41 @@ enum Job {
     Read {
         request: SqlRequest,
         reply: tokio::sync::oneshot::Sender<Result<SqlResponse, SqlError>>,
+    },
+    /// Apply one committed command. A repeated `(origin, id)` returns the stored result.
+    ExecuteId {
+        origin: u64,
+        id: u64,
+        /// Raft log index. Zero stores `idx` as NULL and is not cleared by a purge.
+        log_index: u64,
+        request: SqlRequest,
+        reply: tokio::sync::oneshot::Sender<Result<SqlResponse, SqlError>>,
+    },
+    /// Set `body` to NULL for rows whose log index is at or below `index`.
+    /// `now` is the caller's clock, so a test can move past [`APPLIED_BODY_HOLD`].
+    ForgetBodies {
+        index: u64,
+        now: Instant,
+        reply: tokio::sync::oneshot::Sender<Result<(), SqlError>>,
+    },
+    /// Copy the main database to `dest` with the SQLite backup API.
+    Backup {
+        dest: PathBuf,
+        reply: mpsc::Sender<Result<(), SqlError>>,
+    },
+    /// Backup to a sibling file and return those bytes.
+    Snapshot {
+        reply: mpsc::Sender<Result<Vec<u8>, SqlError>>,
+    },
+    /// Replace the database file with `bytes` and reopen the one connection.
+    Install {
+        bytes: Vec<u8>,
+        reply: mpsc::Sender<Result<(), SqlError>>,
+    },
+    /// `MAX(id)` from `osd1_applied` for one origin. Missing table is 0.
+    MaxApplied {
+        origin: u64,
+        reply: mpsc::Sender<Result<u64, SqlError>>,
     },
 }
 
@@ -154,6 +195,139 @@ impl SqliteWorker {
     /// A statement that writes is not stepped.
     pub fn enqueue_read(&self, request: SqlRequest) -> EnqueueResult {
         self.enqueue_job(|reply| Job::Read { request, reply })
+    }
+
+    /// Apply a raft command. The `osd1_applied` row and the user statements commit together.
+    /// A second call with the same pair returns the stored result and does not run the SQL.
+    pub fn execute_idempotent(
+        &self,
+        origin: u64,
+        id: u64,
+        log_index: u64,
+        request: SqlRequest,
+    ) -> Result<SqlResponse, SqlError> {
+        let Some(tx) = &self.tx else {
+            return Err(SqlError::ShuttingDown);
+        };
+        let (reply, receiver) = tokio::sync::oneshot::channel();
+        self.inflight.fetch_add(1, Ordering::Relaxed);
+        if tx
+            .send(Job::ExecuteId {
+                origin,
+                id,
+                log_index,
+                request,
+                reply,
+            })
+            .is_err()
+        {
+            self.inflight.fetch_sub(1, Ordering::Relaxed);
+            return Err(SqlError::ShuttingDown);
+        }
+        receiver
+            .blocking_recv()
+            .unwrap_or(Err(SqlError::ShuttingDown))
+    }
+
+    /// Drop stored response bodies for log indexes at or below `index`.
+    /// A body applied within the last 3 seconds stays until a later purge.
+    /// The `(origin, id)` row stays, so a later apply returns an empty result.
+    /// A busy transaction is left for the next purge.
+    pub fn forget_applied_bodies(&self, index: u64) -> Result<(), SqlError> {
+        self.forget_applied_bodies_at(index, Instant::now())
+    }
+
+    fn forget_applied_bodies_at(&self, index: u64, now: Instant) -> Result<(), SqlError> {
+        let Some(tx) = &self.tx else {
+            return Err(SqlError::ShuttingDown);
+        };
+        let (reply, receiver) = tokio::sync::oneshot::channel();
+        self.inflight.fetch_add(1, Ordering::Relaxed);
+        if tx.send(Job::ForgetBodies { index, now, reply }).is_err() {
+            self.inflight.fetch_sub(1, Ordering::Relaxed);
+            return Err(SqlError::ShuttingDown);
+        }
+        receiver
+            .blocking_recv()
+            .unwrap_or(Err(SqlError::ShuttingDown))
+    }
+
+    /// Copy the main database to `dest` with SQLite's online backup API.
+    /// The destination is a separate file. The live database keeps its one connection.
+    pub fn backup_to(&self, dest: &Path) -> Result<(), SqlError> {
+        let Some(tx) = &self.tx else {
+            return Err(SqlError::ShuttingDown);
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.inflight.fetch_add(1, Ordering::Relaxed);
+        if tx
+            .send(Job::Backup {
+                dest: dest.to_path_buf(),
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            self.inflight.fetch_sub(1, Ordering::Relaxed);
+            return Err(SqlError::ShuttingDown);
+        }
+        reply_rx.recv().unwrap_or(Err(SqlError::ShuttingDown))
+    }
+
+    /// Consistent copy of the main database file.
+    pub fn snapshot_main(&self) -> Result<Vec<u8>, SqlError> {
+        let Some(tx) = &self.tx else {
+            return Err(SqlError::ShuttingDown);
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.inflight.fetch_add(1, Ordering::Relaxed);
+        if tx.send(Job::Snapshot { reply: reply_tx }).is_err() {
+            self.inflight.fetch_sub(1, Ordering::Relaxed);
+            return Err(SqlError::ShuttingDown);
+        }
+        reply_rx.recv().unwrap_or(Err(SqlError::ShuttingDown))
+    }
+
+    /// Highest command id in `osd1_applied` for `origin`, or 0 when that table is absent.
+    ///
+    /// A restored database keeps this table. A new raft directory does not, so the next
+    /// command id has to start after these rows or the first write is skipped.
+    pub fn max_applied_id(&self, origin: u64) -> Result<u64, SqlError> {
+        let Some(tx) = &self.tx else {
+            return Err(SqlError::ShuttingDown);
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.inflight.fetch_add(1, Ordering::Relaxed);
+        if tx
+            .send(Job::MaxApplied {
+                origin,
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            self.inflight.fetch_sub(1, Ordering::Relaxed);
+            return Err(SqlError::ShuttingDown);
+        }
+        reply_rx.recv().unwrap_or(Err(SqlError::ShuttingDown))
+    }
+
+    /// Replace the open database with `bytes`. The SQL thread closes and reopens its connection.
+    pub fn install_main(&self, bytes: Vec<u8>) -> Result<(), SqlError> {
+        let Some(tx) = &self.tx else {
+            return Err(SqlError::ShuttingDown);
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.inflight.fetch_add(1, Ordering::Relaxed);
+        if tx
+            .send(Job::Install {
+                bytes,
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            self.inflight.fetch_sub(1, Ordering::Relaxed);
+            return Err(SqlError::ShuttingDown);
+        }
+        reply_rx.recv().unwrap_or(Err(SqlError::ShuttingDown))
     }
 
     /// Wait until the SQL thread can take the job, then wait for the result.
@@ -299,7 +473,7 @@ fn worker_main(
     deny_nondeterministic: Arc<AtomicBool>,
     auth_generation: Arc<AtomicUsize>,
 ) {
-    let conn = match Connection::open(&path) {
+    let mut conn = match Connection::open(&path) {
         Ok(conn) => conn,
         Err(error) => {
             let _ = ready.send(Err(error));
@@ -320,11 +494,12 @@ fn worker_main(
         Arc::clone(&internal),
         Arc::clone(&schema_changed),
         Arc::clone(&deny_code),
-        deny_nondeterministic,
+        Arc::clone(&deny_nondeterministic),
     ) {
         let _ = ready.send(Err(error));
         return;
     }
+    install_progress(&conn);
     // Room for BEGIN, COMMIT, ROLLBACK, and the hot statements.
     conn.set_prepared_statement_cache_capacity(32);
     if ready.send(Ok(())).is_err() {
@@ -337,6 +512,7 @@ fn worker_main(
     let mut column_cache = ColumnCache::new();
     let mut poisoned = false;
     let mut seen_auth = 0usize;
+    let mut applied_at: HashMap<u64, Instant> = HashMap::new();
     loop {
         let job = match rx.recv() {
             Ok(job) => job,
@@ -356,21 +532,24 @@ fn worker_main(
         }
         match job {
             Job::Execute { request, reply } => {
+                let deadline = request.deadline;
                 let result = if poisoned {
                     Err(SqlError::TransactionLeftOpen)
                 } else {
-                    execute_request(
-                        &conn,
-                        &path,
-                        &colo,
-                        &region,
-                        &mut size_after,
-                        &mut column_cache,
-                        &internal,
-                        &schema_changed,
-                        &deny_code,
-                        request,
-                    )
+                    run_with_deadline(deadline, || {
+                        execute_request(
+                            &conn,
+                            &path,
+                            &colo,
+                            &region,
+                            &mut size_after,
+                            &mut column_cache,
+                            &internal,
+                            &schema_changed,
+                            &deny_code,
+                            request,
+                        )
+                    })
                 };
                 if matches!(result, Err(SqlError::TransactionLeftOpen)) {
                     poisoned = true;
@@ -388,23 +567,152 @@ fn worker_main(
                 let _ = reply.send(result);
             }
             Job::Read { request, reply } => {
+                let deadline = request.deadline;
                 let result = if poisoned {
                     Err(SqlError::TransactionLeftOpen)
                 } else {
-                    read_request(
-                        &conn,
-                        &request,
-                        &colo,
-                        &region,
-                        &mut column_cache,
-                        &size_after,
-                        &schema_changed,
-                        &deny_code,
-                    )
+                    run_with_deadline(deadline, || {
+                        read_request(
+                            &conn,
+                            &request,
+                            &colo,
+                            &region,
+                            &mut column_cache,
+                            &size_after,
+                            &schema_changed,
+                            &deny_code,
+                        )
+                    })
                 };
                 drop(guard);
                 let _ = reply.send(result);
             }
+            Job::ExecuteId {
+                origin,
+                id,
+                log_index,
+                request,
+                reply,
+            } => {
+                let deadline = request.deadline;
+                let result = if poisoned {
+                    Err(SqlError::TransactionLeftOpen)
+                } else {
+                    run_with_deadline(deadline, || {
+                        execute_idempotent(
+                            &conn,
+                            &path,
+                            &colo,
+                            &region,
+                            &mut size_after,
+                            &mut column_cache,
+                            &internal,
+                            &schema_changed,
+                            &deny_code,
+                            origin,
+                            id,
+                            log_index,
+                            request,
+                            &mut applied_at,
+                        )
+                    })
+                };
+                if matches!(result, Err(SqlError::TransactionLeftOpen)) {
+                    poisoned = true;
+                }
+                drop(guard);
+                let _ = reply.send(result);
+            }
+            Job::Backup { dest, reply } => {
+                let result = if poisoned || !conn.is_autocommit() {
+                    Err(SqlError::TransactionLeftOpen)
+                } else {
+                    backup_database(&conn, &dest)
+                };
+                drop(guard);
+                let _ = reply.send(result);
+            }
+            Job::Snapshot { reply } => {
+                let result = if poisoned || !conn.is_autocommit() {
+                    Err(SqlError::TransactionLeftOpen)
+                } else {
+                    snapshot_bytes(&conn, &path)
+                };
+                drop(guard);
+                let _ = reply.send(result);
+            }
+            Job::Install { bytes, reply } => {
+                let result = if poisoned || !conn.is_autocommit() {
+                    Err(SqlError::TransactionLeftOpen)
+                } else {
+                    // The file cannot be replaced while this connection holds it.
+                    let closed = std::mem::replace(
+                        &mut conn,
+                        Connection::open_in_memory().expect("memory sqlite"),
+                    );
+                    drop(closed);
+                    match replace_database_file(&path, &bytes) {
+                        Ok(()) => match reopen_connection(
+                            &path,
+                            &internal,
+                            &schema_changed,
+                            &deny_code,
+                            &deny_nondeterministic,
+                        ) {
+                            Ok(opened) => {
+                                conn = opened;
+                                applied_at.clear();
+                                column_cache = ColumnCache::new();
+                                size_after =
+                                    fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
+                                poisoned = false;
+                                Ok(())
+                            }
+                            Err(error) => {
+                                poisoned = true;
+                                Err(error)
+                            }
+                        },
+                        Err(error) => {
+                            if let Ok(opened) = reopen_connection(
+                                &path,
+                                &internal,
+                                &schema_changed,
+                                &deny_code,
+                                &deny_nondeterministic,
+                            ) {
+                                conn = opened;
+                            } else {
+                                poisoned = true;
+                            }
+                            Err(error)
+                        }
+                    }
+                };
+                drop(guard);
+                let _ = reply.send(result);
+            }
+            Job::MaxApplied { origin, reply } => {
+                let result = if poisoned {
+                    Err(SqlError::TransactionLeftOpen)
+                } else {
+                    max_applied_origin(&conn, &internal, origin)
+                };
+                drop(guard);
+                let _ = reply.send(result);
+            }
+            Job::ForgetBodies { index, now, reply } => {
+                let result = if poisoned {
+                    Err(SqlError::TransactionLeftOpen)
+                } else {
+                    clear_applied_bodies(&conn, &internal, index, now, &mut applied_at)
+                };
+                drop(guard);
+                let _ = reply.send(result);
+            }
+        }
+        if !poisoned {
+            checkpoint_if_wal_is_large(&conn, &path, &internal);
         }
     }
 }
@@ -420,12 +728,67 @@ impl Drop for InflightGuard<'_> {
 fn prepare_connection(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "
+        PRAGMA page_size=4096;
         PRAGMA journal_mode=WAL;
         PRAGMA synchronous=FULL;
         PRAGMA foreign_keys=ON;
         PRAGMA busy_timeout=0;
         ",
-    )
+    )?;
+    let status: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if status != "ok" {
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CORRUPT),
+            Some(format!("quick_check: {status}")),
+        ));
+    }
+    Ok(())
+}
+
+thread_local! {
+    static SQL_DEADLINE: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+fn run_with_deadline<T>(
+    deadline: Option<Instant>,
+    body: impl FnOnce() -> Result<T, SqlError>,
+) -> Result<T, SqlError> {
+    if deadline.is_some_and(|at| Instant::now() >= at) {
+        return Err(SqlError::TimedOut);
+    }
+    SQL_DEADLINE.with(|cell| cell.set(deadline));
+    struct Clear;
+    impl Drop for Clear {
+        fn drop(&mut self) {
+            SQL_DEADLINE.with(|cell| cell.set(None));
+        }
+    }
+    let _clear = Clear;
+    body()
+}
+
+/// `sqlite3_progress_handler`. Returning true interrupts the statement.
+fn install_progress(conn: &Connection) {
+    conn.progress_handler(
+        1_000,
+        Some(|| SQL_DEADLINE.with(|cell| cell.get().is_some_and(|at| Instant::now() >= at))),
+    );
+}
+
+const WAL_CHECKPOINT_BYTES: u64 = 4 * 1024 * 1024;
+
+fn checkpoint_if_wal_is_large(conn: &Connection, path: &Path, internal: &AtomicBool) {
+    if !conn.is_autocommit() {
+        return;
+    }
+    let wal = PathBuf::from(format!("{}-wal", path.display()));
+    let len = fs::metadata(&wal).map(|meta| meta.len()).unwrap_or(0);
+    if len <= WAL_CHECKPOINT_BYTES {
+        return;
+    }
+    let _ = allow_internal(internal, || {
+        conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE)")
+    });
 }
 
 const DENY_NONE: u8 = 0;
@@ -436,6 +799,9 @@ const DENY_TRANSACTION: u8 = 4;
 const DENY_WRITABLE_SCHEMA: u8 = 5;
 const DENY_FUNCTION: u8 = 6;
 const DENY_NONDETERMINISTIC: u8 = 7;
+const DENY_APPLIED: u8 = 8;
+const DENY_DURABILITY: u8 = 9;
+const APPLIED_TABLE: &str = "osd1_applied";
 
 fn install_authorizer(
     conn: &Connection,
@@ -490,6 +856,9 @@ fn is_schema_action(action: &AuthAction<'_>) -> bool {
 }
 
 fn deny_context(context: &AuthContext<'_>, internal: bool, deny_nondeterministic: bool) -> u8 {
+    if !internal && touches_applied_table(&context.action) {
+        return DENY_APPLIED;
+    }
     if let Some(database) = context.database_name.filter(|name| !name.is_empty()) {
         if !database.eq_ignore_ascii_case("main") && !database.eq_ignore_ascii_case("temp") {
             return DENY_OTHER_DB;
@@ -506,6 +875,9 @@ fn deny_context(context: &AuthContext<'_>, internal: bool, deny_nondeterministic
             if pragma_name.eq_ignore_ascii_case("writable_schema") =>
         {
             DENY_WRITABLE_SCHEMA
+        }
+        AuthAction::Pragma { pragma_name, .. } if is_durability_pragma(pragma_name) => {
+            DENY_DURABILITY
         }
         AuthAction::Function { function_name } if is_denied_function(function_name) => {
             DENY_FUNCTION
@@ -534,8 +906,36 @@ fn deny_message(code: u8) -> &'static str {
         DENY_WRITABLE_SCHEMA => "writable_schema is not allowed",
         DENY_FUNCTION => "function is not allowed",
         DENY_NONDETERMINISTIC => "nondeterministic function is not allowed",
+        DENY_APPLIED => "osd1_applied is reserved",
+        DENY_DURABILITY => "pragma is not allowed",
         _ => "not authorized",
     }
+}
+
+fn is_durability_pragma(name: &str) -> bool {
+    const NAMES: &[&str] = &[
+        "synchronous",
+        "journal_mode",
+        "wal_autocheckpoint",
+        "locking_mode",
+        "mmap_size",
+        "page_size",
+    ];
+    NAMES.iter().any(|item| name.eq_ignore_ascii_case(item))
+}
+
+fn touches_applied_table(action: &AuthAction<'_>) -> bool {
+    let name = match action {
+        AuthAction::Read { table_name, .. }
+        | AuthAction::Insert { table_name, .. }
+        | AuthAction::Update { table_name, .. }
+        | AuthAction::Delete { table_name, .. }
+        | AuthAction::DropTable { table_name, .. }
+        | AuthAction::AlterTable { table_name, .. }
+        | AuthAction::CreateIndex { table_name, .. } => table_name,
+        _ => return false,
+    };
+    name.eq_ignore_ascii_case(APPLIED_TABLE)
 }
 
 fn is_denied_function(name: &str) -> bool {
@@ -614,7 +1014,341 @@ fn execute_request(
     for statement in &mut statements {
         statement.meta.size_after = *size_after;
     }
-    Ok(SqlResponse { statements })
+    Ok(SqlResponse {
+        statements,
+        commit_index: None,
+    })
+}
+
+fn max_applied_origin(
+    conn: &Connection,
+    internal: &AtomicBool,
+    origin: u64,
+) -> Result<u64, SqlError> {
+    let exists = conn
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'osd1_applied'")
+        .and_then(|mut statement| statement.exists([]))
+        .map_err(|error| SqlError::Sqlite {
+            code: 1,
+            message: error.to_string(),
+        })?;
+    if !exists {
+        return Ok(0);
+    }
+    let id = allow_internal(internal, || {
+        conn.query_row(
+            "SELECT COALESCE(MAX(id), 0) FROM osd1_applied WHERE origin = ?1",
+            [origin as i64],
+            |row| row.get::<_, i64>(0),
+        )
+    })
+    .map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: error.to_string(),
+    })?;
+    Ok(id.max(0) as u64)
+}
+
+fn execute_idempotent(
+    conn: &Connection,
+    path: &Path,
+    colo: &Arc<str>,
+    region: &Arc<str>,
+    size_after: &mut u64,
+    column_cache: &mut ColumnCache,
+    internal: &AtomicBool,
+    schema_changed: &AtomicBool,
+    deny_code: &AtomicU8,
+    origin: u64,
+    id: u64,
+    log_index: u64,
+    request: SqlRequest,
+    applied_at: &mut HashMap<u64, Instant>,
+) -> Result<SqlResponse, SqlError> {
+    deny_code.store(DENY_NONE, Ordering::Relaxed);
+    exec_cached(conn, "BEGIN IMMEDIATE", internal, deny_code)?;
+    if let Err(error) = ensure_applied_table(conn, internal) {
+        rollback(conn, internal, deny_code);
+        return Err(map_sqlite_error(error, deny_code));
+    }
+    let reserved = allow_internal(internal, || {
+        let idx: Option<i64> = (log_index > 0).then_some(log_index as i64);
+        conn.execute(
+            "INSERT OR IGNORE INTO osd1_applied (origin, id, idx) VALUES (?1, ?2, ?3)",
+            rusqlite::params![origin as i64, id as i64, idx],
+        )
+    });
+    let inserted = match reserved {
+        Ok(inserted) => inserted,
+        Err(error) => {
+            rollback(conn, internal, deny_code);
+            return Err(map_sqlite_error(error, deny_code));
+        }
+    };
+    if inserted == 0 {
+        let stored = allow_internal(internal, || {
+            conn.query_row(
+                "SELECT body FROM osd1_applied WHERE origin = ?1 AND id = ?2",
+                [origin as i64, id as i64],
+                |row| row.get::<_, Option<String>>(0),
+            )
+        });
+        let stored = match stored {
+            Ok(body) => body,
+            Err(error) => {
+                rollback(conn, internal, deny_code);
+                return Err(map_sqlite_error(error, deny_code));
+            }
+        };
+        rollback(conn, internal, deny_code);
+        return stored_response(stored);
+    }
+    let statements = match run_request(
+        conn,
+        &request,
+        colo,
+        region,
+        column_cache,
+        schema_changed,
+        deny_code,
+    ) {
+        Ok(statements) => statements,
+        Err(error) => {
+            discard_schema_cache(conn, schema_changed, column_cache);
+            rollback(conn, internal, deny_code);
+            return Err(error);
+        }
+    };
+    discard_schema_cache(conn, schema_changed, column_cache);
+    let measured = if statements.iter().any(|statement| statement.meta.changed_db) {
+        fs::metadata(path)
+            .map(|meta| meta.len())
+            .unwrap_or(*size_after)
+    } else {
+        *size_after
+    };
+    let mut statements = statements;
+    for statement in &mut statements {
+        statement.meta.size_after = measured;
+    }
+    let response = SqlResponse {
+        statements,
+        commit_index: None,
+    };
+    let body = match response.to_stored() {
+        Ok(body) => body,
+        Err(error) => {
+            rollback(conn, internal, deny_code);
+            return Err(SqlError::Sqlite {
+                code: 1,
+                message: error,
+            });
+        }
+    };
+    let saved = allow_internal(internal, || {
+        conn.execute(
+            "UPDATE osd1_applied SET body = ?1 WHERE origin = ?2 AND id = ?3",
+            rusqlite::params![body, origin as i64, id as i64],
+        )
+    });
+    if let Err(error) = saved {
+        rollback(conn, internal, deny_code);
+        return Err(map_sqlite_error(error, deny_code));
+    }
+    if let Err(error) = exec_cached(conn, "COMMIT", internal, deny_code) {
+        rollback(conn, internal, deny_code);
+        return Err(error);
+    }
+    if !conn.is_autocommit() {
+        rollback(conn, internal, deny_code);
+        if !conn.is_autocommit() {
+            return Err(SqlError::TransactionLeftOpen);
+        }
+    }
+    *size_after = measured;
+    if log_index > 0 {
+        applied_at.insert(log_index, Instant::now());
+    }
+    Ok(response)
+}
+
+fn ensure_applied_table(conn: &Connection, internal: &AtomicBool) -> Result<(), rusqlite::Error> {
+    allow_internal(internal, || {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS osd1_applied (
+                origin INTEGER NOT NULL,
+                id INTEGER NOT NULL,
+                body TEXT,
+                idx INTEGER,
+                PRIMARY KEY (origin, id)
+            )",
+        )?;
+        let mut info = conn.prepare("PRAGMA table_info(osd1_applied)")?;
+        let names = info
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(info);
+        if !names.iter().any(|name| name.eq_ignore_ascii_case("body")) {
+            conn.execute_batch("ALTER TABLE osd1_applied ADD COLUMN body TEXT")?;
+        }
+        if !names.iter().any(|name| name.eq_ignore_ascii_case("idx")) {
+            conn.execute_batch("ALTER TABLE osd1_applied ADD COLUMN idx INTEGER")?;
+        }
+        Ok(())
+    })
+}
+
+fn clear_applied_bodies(
+    conn: &Connection,
+    internal: &AtomicBool,
+    index: u64,
+    now: Instant,
+    applied_at: &mut HashMap<u64, Instant>,
+) -> Result<(), SqlError> {
+    if !conn.is_autocommit() {
+        return Ok(());
+    }
+    ensure_applied_table(conn, internal).map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: error.to_string(),
+    })?;
+    let mut cutoff = index;
+    for (idx, at) in applied_at.iter() {
+        if *idx <= index && now.saturating_duration_since(*at) < APPLIED_BODY_HOLD {
+            cutoff = cutoff.min(idx.saturating_sub(1));
+        }
+    }
+    let cleared = allow_internal(internal, || {
+        conn.execute(
+            "UPDATE osd1_applied SET body = NULL
+             WHERE idx IS NOT NULL AND idx <= ?1 AND body IS NOT NULL",
+            [cutoff as i64],
+        )
+    })
+    .map(|_| ())
+    .map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: error.to_string(),
+    });
+    if cleared.is_ok() {
+        applied_at.retain(|idx, at| {
+            *idx > cutoff && now.saturating_duration_since(*at) < APPLIED_BODY_HOLD
+        });
+    }
+    cleared
+}
+
+fn stored_response(body: Option<String>) -> Result<SqlResponse, SqlError> {
+    let Some(body) = body.filter(|body| !body.is_empty()) else {
+        return Ok(SqlResponse {
+            statements: Vec::new(),
+            commit_index: None,
+        });
+    };
+    SqlResponse::from_stored(&body).map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: format!("stored result: {error}"),
+    })
+}
+
+fn backup_database(conn: &Connection, dest: &Path) -> Result<(), SqlError> {
+    if let Some(parent) = dest
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::remove_file(dest);
+    conn.backup(rusqlite::DatabaseName::Main, dest, None)
+        .map_err(|error| map_sqlite_error(error, &AtomicU8::new(DENY_NONE)))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(dest, fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+fn snapshot_bytes(conn: &Connection, path: &Path) -> Result<Vec<u8>, SqlError> {
+    let snap = path.with_file_name(format!(
+        ".{}.snap",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("osd1.db")
+    ));
+    backup_database(conn, &snap)?;
+    let bytes = fs::read(&snap).map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: error.to_string(),
+    });
+    let _ = fs::remove_file(&snap);
+    bytes
+}
+
+fn replace_database_file(path: &Path, bytes: &[u8]) -> Result<(), SqlError> {
+    let tmp = path.with_file_name(format!(
+        ".{}.install",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("osd1.db")
+    ));
+    {
+        use std::io::Write;
+        let mut file = fs::File::create(&tmp).map_err(|error| SqlError::Sqlite {
+            code: 1,
+            message: error.to_string(),
+        })?;
+        file.write_all(bytes).map_err(|error| SqlError::Sqlite {
+            code: 1,
+            message: error.to_string(),
+        })?;
+        file.sync_all().map_err(|error| SqlError::Sqlite {
+            code: 1,
+            message: error.to_string(),
+        })?;
+    }
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = PathBuf::from(format!("{}{suffix}", path.display()));
+        let _ = fs::remove_file(sidecar);
+    }
+    fs::rename(&tmp, path).map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: error.to_string(),
+    })?;
+    restrict_database_files(path);
+    Ok(())
+}
+
+fn reopen_connection(
+    path: &Path,
+    internal: &Arc<AtomicBool>,
+    schema_changed: &Arc<AtomicBool>,
+    deny_code: &Arc<AtomicU8>,
+    deny_nondeterministic: &Arc<AtomicBool>,
+) -> Result<Connection, SqlError> {
+    let conn = Connection::open(path).map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: error.to_string(),
+    })?;
+    prepare_connection(&conn).map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: error.to_string(),
+    })?;
+    install_authorizer(
+        &conn,
+        Arc::clone(internal),
+        Arc::clone(schema_changed),
+        Arc::clone(deny_code),
+        Arc::clone(deny_nondeterministic),
+    )
+    .map_err(|error| SqlError::Sqlite {
+        code: 1,
+        message: error.to_string(),
+    })?;
+    install_progress(&conn);
+    conn.set_prepared_statement_cache_capacity(32);
+    restrict_database_files(path);
+    Ok(conn)
 }
 
 /// A follower read. Does not call `execute_request` and does not take the write lock.
@@ -647,7 +1381,10 @@ fn read_request(
         statement.meta.served_by_primary = false;
         statement.meta.size_after = *size_after;
     }
-    Ok(SqlResponse { statements })
+    Ok(SqlResponse {
+        statements,
+        commit_index: None,
+    })
 }
 
 fn run_request(
@@ -1160,6 +1897,13 @@ fn map_sqlite_error(error: rusqlite::Error, deny_code: &AtomicU8) -> SqlError {
         ),
         other => (1, other.to_string()),
     };
+    if code & 0xff == rusqlite::ffi::SQLITE_INTERRUPT {
+        let expired = SQL_DEADLINE.with(|cell| cell.get().is_some_and(|at| Instant::now() >= at));
+        if expired {
+            SQL_DEADLINE.with(|cell| cell.set(None));
+            return SqlError::TimedOut;
+        }
+    }
     if code == 23 || code & 0xff == 23 {
         let reason = deny_code.swap(DENY_NONE, Ordering::Relaxed);
         return SqlError::AuthorizerDenied {
@@ -1201,6 +1945,8 @@ mod tests {
             sql: sql.to_string(),
             params,
             shape: ResultShape::Objects,
+            deadline: None,
+            min_commit_index: None,
         }) {
             EnqueueResult::Accepted(receiver) => receiver.blocking_recv().expect("worker reply"),
             EnqueueResult::Full => panic!("queue full"),
@@ -1275,6 +2021,8 @@ mod tests {
             sql: sql.to_string(),
             params,
             shape: ResultShape::Objects,
+            deadline: None,
+            min_commit_index: None,
         }) {
             EnqueueResult::Accepted(receiver) => receiver.blocking_recv().expect("worker reply"),
             EnqueueResult::Full => panic!("queue full"),
@@ -1546,6 +2294,27 @@ mod tests {
     }
 
     #[test]
+    fn durability_pragmas_are_denied() {
+        let path = temp_db("durability");
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        for sql in [
+            "PRAGMA synchronous=OFF",
+            "PRAGMA journal_mode=DELETE",
+            "PRAGMA wal_autocheckpoint=0",
+            "PRAGMA locking_mode=EXCLUSIVE",
+            "PRAGMA mmap_size=0",
+            "PRAGMA page_size=8192",
+        ] {
+            let error = run(&worker, sql, vec![]).unwrap_err();
+            assert!(
+                matches!(error, SqlError::AuthorizerDenied { ref message } if message == "pragma is not allowed"),
+                "{sql} -> {error:?}"
+            );
+        }
+        run(&worker, "PRAGMA integrity_check", vec![]).unwrap();
+    }
+
+    #[test]
     fn writable_schema_is_denied() {
         let path = temp_db("pragma");
         let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
@@ -1813,6 +2582,8 @@ mod tests {
             sql: sql.to_string(),
             params: Vec::new(),
             shape: ResultShape::Objects,
+            deadline: None,
+            min_commit_index: None,
         }
     }
 
@@ -1821,6 +2592,8 @@ mod tests {
             sql: sql.to_string(),
             params,
             shape: ResultShape::Objects,
+            deadline: None,
+            min_commit_index: None,
         })
     }
 
@@ -1852,5 +2625,164 @@ mod tests {
             EnqueueResult::Full => panic!("full"),
             EnqueueResult::Closed => panic!("closed"),
         }
+    }
+
+    #[test]
+    fn a_repeated_command_id_does_not_insert_again_and_a_snapshot_restores_the_file() {
+        let path = temp_db("applied");
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        assert_eq!(worker.max_applied_id(1).expect("floor"), 0);
+        let request = SqlRequest {
+            sql: "CREATE TABLE t(n INTEGER); INSERT INTO t(n) VALUES (4)".to_string(),
+            params: vec![],
+            shape: ResultShape::Objects,
+            deadline: None,
+            min_commit_index: None,
+        };
+        let first = worker
+            .execute_idempotent(1, 7, 0, request.clone())
+            .expect("apply");
+        let replay = worker.execute_idempotent(1, 7, 0, request).expect("replay");
+        let stored = SqlResponse::from_stored(&first.to_stored().expect("json")).expect("stored");
+        assert_eq!(replay.statements, stored.statements);
+        assert!(!first.statements.is_empty());
+        assert_eq!(worker.max_applied_id(1).expect("floor"), 7);
+        assert_eq!(worker.max_applied_id(2).expect("other origin"), 0);
+        let rows = run(&worker, "SELECT n FROM t", vec![]).unwrap();
+        assert_eq!(rows.statements[0].rows, vec![vec![SqlValue::Integer(4)]]);
+        let denied = run(&worker, "SELECT origin FROM osd1_applied", vec![]);
+        assert!(denied.is_err(), "{denied:?}");
+
+        let bytes = worker.snapshot_main().expect("snapshot");
+        let copy = temp_db("applied-copy");
+        let restored = SqliteWorker::open(&copy, 4, "LOC").unwrap();
+        restored.install_main(bytes).expect("install");
+        let rows = run(&restored, "SELECT n FROM t", vec![]).unwrap();
+        assert_eq!(rows.statements[0].rows, vec![vec![SqlValue::Integer(4)]]);
+    }
+
+    #[test]
+    fn a_deadline_interrupts_sql_and_the_next_statement_runs() {
+        let path = temp_db("deadline");
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        let mut request = sql_request(
+            "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 10000000) SELECT max(x) FROM c",
+        );
+        request.deadline = Some(Instant::now() + std::time::Duration::from_millis(50));
+        let started = Instant::now();
+        let error = match worker.enqueue(request) {
+            EnqueueResult::Accepted(receiver) => {
+                receiver.blocking_recv().expect("reply").unwrap_err()
+            }
+            EnqueueResult::Full => panic!("queue full"),
+            EnqueueResult::Closed => panic!("worker closed"),
+        };
+        assert!(matches!(error, SqlError::TimedOut), "{error:?}");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "the statement was not interrupted"
+        );
+        run(&worker, "SELECT 1", vec![]).unwrap();
+
+        let mut expired = sql_request("SELECT * FROM not_a_table");
+        expired.deadline = Some(Instant::now() - std::time::Duration::from_millis(5));
+        let error = match worker.enqueue(expired) {
+            EnqueueResult::Accepted(receiver) => {
+                receiver.blocking_recv().expect("reply").unwrap_err()
+            }
+            EnqueueResult::Full => panic!("queue full"),
+            EnqueueResult::Closed => panic!("worker closed"),
+        };
+        assert!(matches!(error, SqlError::TimedOut), "{error:?}");
+    }
+
+    #[test]
+    fn an_old_applied_table_keeps_its_rows_and_stores_new_results() {
+        let path = temp_db("applied-migrate");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE osd1_applied (
+                    origin INTEGER NOT NULL,
+                    id INTEGER NOT NULL,
+                    PRIMARY KEY (origin, id)
+                );
+                INSERT INTO osd1_applied (origin, id) VALUES (1, 3);",
+            )
+            .unwrap();
+        }
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        let old = worker
+            .execute_idempotent(1, 3, 0, sql_request("CREATE TABLE skipped(n INTEGER)"))
+            .unwrap();
+        assert!(old.statements.is_empty());
+        let request = sql_request("CREATE TABLE t(n INTEGER); INSERT INTO t(n) VALUES (9)");
+        let first = worker
+            .execute_idempotent(1, 4, 0, request.clone())
+            .expect("apply");
+        let second = worker.execute_idempotent(1, 4, 0, request).expect("replay");
+        let stored = SqlResponse::from_stored(&first.to_stored().expect("json")).expect("stored");
+        assert_eq!(second.statements, stored.statements);
+        assert!(!first.statements.is_empty());
+        let rows = run(&worker, "SELECT n FROM t", vec![]).unwrap();
+        assert_eq!(rows.statements[0].rows, vec![vec![SqlValue::Integer(9)]]);
+        let skipped = run(
+            &worker,
+            "SELECT name FROM sqlite_master WHERE name = 'skipped'",
+            vec![],
+        )
+        .unwrap();
+        assert!(skipped.statements[0].rows.is_empty());
+    }
+
+    #[test]
+    fn a_purged_index_clears_the_stored_body_and_keeps_the_row() {
+        let path = temp_db("horizon");
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        worker
+            .execute_idempotent(1, 1, 4, sql_request("CREATE TABLE t(n INTEGER)"))
+            .unwrap();
+        let insert = sql_request("INSERT INTO t(n) VALUES (1)");
+        let stored = worker.execute_idempotent(1, 2, 8, insert.clone()).unwrap();
+        let stored = SqlResponse::from_stored(&stored.to_stored().expect("json")).expect("stored");
+        assert!(!stored.statements.is_empty());
+        let unknown = sql_request("INSERT INTO t(n) VALUES (2)");
+        let unknown_stored = worker.execute_idempotent(1, 3, 0, unknown.clone()).unwrap();
+        let unknown_stored =
+            SqlResponse::from_stored(&unknown_stored.to_stored().expect("json")).expect("stored");
+        assert!(!unknown_stored.statements.is_empty());
+
+        worker.forget_applied_bodies(4).unwrap();
+        let kept_early = worker
+            .execute_idempotent(1, 1, 4, sql_request("CREATE TABLE t(n INTEGER)"))
+            .unwrap();
+        assert!(
+            !kept_early.statements.is_empty(),
+            "a body applied moments ago stays through the purge"
+        );
+        let later = std::time::Instant::now() + std::time::Duration::from_secs(4);
+        worker.forget_applied_bodies_at(4, later).unwrap();
+        let replay_old = worker
+            .execute_idempotent(1, 1, 4, sql_request("CREATE TABLE t(n INTEGER)"))
+            .unwrap();
+        assert!(replay_old.statements.is_empty());
+        let replay_kept = worker.execute_idempotent(1, 2, 8, insert).unwrap();
+        assert_eq!(replay_kept.statements, stored.statements);
+        let replay_unknown = worker.execute_idempotent(1, 3, 0, unknown).unwrap();
+        assert_eq!(replay_unknown.statements, unknown_stored.statements);
+        let rows = run(&worker, "SELECT COUNT(*) AS c FROM t", vec![]).unwrap();
+        assert_eq!(rows.statements[0].rows, vec![vec![SqlValue::Integer(2)]]);
+
+        worker.forget_applied_bodies_at(8, later).unwrap();
+        let cleared = worker
+            .execute_idempotent(1, 2, 8, sql_request("INSERT INTO t(n) VALUES (1)"))
+            .unwrap();
+        assert!(cleared.statements.is_empty());
+        let still = worker
+            .execute_idempotent(1, 3, 0, sql_request("INSERT INTO t(n) VALUES (2)"))
+            .unwrap();
+        assert_eq!(still.statements, unknown_stored.statements);
+        let rows = run(&worker, "SELECT COUNT(*) AS c FROM t", vec![]).unwrap();
+        assert_eq!(rows.statements[0].rows, vec![vec![SqlValue::Integer(2)]]);
     }
 }

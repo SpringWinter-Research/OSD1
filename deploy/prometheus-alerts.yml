@@ -1,0 +1,12 @@
+groups:
+  - name: osd1
+    rules:
+      # The gauge stays 0 until the sidecar has seen an LTX generation.
+      # 60 seconds is the recovery point a customer can hold this deployment to.
+      - alert: Osd1ReplicaStale
+        expr: osd1_litestream_last_ok_seconds > 0 and (time() - osd1_litestream_last_ok_seconds) > 60
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: Litestream has not confirmed a replica generation for 60 seconds

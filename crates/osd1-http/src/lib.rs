@@ -2,16 +2,19 @@
 
 mod metrics;
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Request, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use metrics::{route_label, Metrics, SqlObservation};
+use metrics::{route_label, Metrics, SqlObservation, APPLY_LAG_NOT_READY};
 use osd1_types::{
     parse_params, row_to_object, EnqueueResult, ResultShape, SqlError, SqlRequest, SqlResponse,
     SqlValue, StatementResult, ERROR_BAD_REQUEST, ERROR_QUEUE_FULL, ERROR_SQL, ERROR_UNAUTHORIZED,
@@ -32,6 +35,12 @@ pub struct AppState {
     pub max_response_bytes: usize,
     pub request_timeout: Option<Duration>,
     pub metrics: Metrics,
+    /// Set when this process is leaving the cluster. Queries stop, `/health` fails.
+    pub draining: Arc<AtomicBool>,
+    /// When set, this process serves only this database id from its own file.
+    pub local_database_id: Option<String>,
+    /// database id to `http://host:port` of the process that owns that file.
+    pub routes: HashMap<String, String>,
 }
 
 impl AppState {
@@ -46,6 +55,9 @@ impl AppState {
             max_response_bytes: 1024 * 1024,
             request_timeout: Some(Duration::from_secs(30)),
             metrics: Metrics::new(),
+            draining: Arc::new(AtomicBool::new(false)),
+            local_database_id: None,
+            routes: HashMap::new(),
         }
     }
 }
@@ -54,7 +66,8 @@ impl AppState {
 /// `POST /accounts/{account_id}/d1/database/{database_id}/query`, and the matching `/raw` route.
 ///
 /// `/`, `/explorer`, `/health`, and `/metrics` do not enqueue and do not use the bearer token.
-/// Path ids are ignored. The explorer page calls `/raw` with the token.
+/// Path ids are ignored unless `local_database_id` or `routes` is set.
+/// The explorer page calls `/raw` with the token.
 pub fn router(state: AppState) -> Router {
     let max_body_bytes = state.max_body_bytes;
     let metrics = state.metrics.clone();
@@ -106,11 +119,25 @@ async fn explorer() -> Response {
         .into_response()
 }
 
-async fn health() -> Response {
-    json_response(StatusCode::OK, HealthBody { ok: true })
+async fn health(State(state): State<AppState>) -> Response {
+    let draining = state.draining.load(Ordering::Relaxed);
+    let ready = !draining && state.metrics.apply_lag() <= APPLY_LAG_NOT_READY;
+    let status = if draining {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    };
+    json_response(
+        status,
+        HealthBody {
+            ok: !draining,
+            ready,
+        },
+    )
 }
 
 async fn metrics_endpoint(State(state): State<AppState>) -> Response {
+    state.metrics.refresh_litestream();
     state.metrics.set_queue(
         state.executor.sql_inflight(),
         state.executor.sql_queue_capacity(),
@@ -128,20 +155,203 @@ async fn metrics_endpoint(State(state): State<AppState>) -> Response {
 
 async fn query(
     State(state): State<AppState>,
-    Path((_, _)): Path<(String, String)>,
+    Path((account, database)): Path<(String, String)>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    handle(&state, &headers, &body, ResultShape::Objects).await
+    dispatch(
+        &state,
+        &account,
+        &database,
+        &headers,
+        &body,
+        ResultShape::Objects,
+    )
+    .await
 }
 
 async fn raw(
     State(state): State<AppState>,
-    Path((_, _)): Path<(String, String)>,
+    Path((account, database)): Path<(String, String)>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    handle(&state, &headers, &body, ResultShape::Raw).await
+    dispatch(
+        &state,
+        &account,
+        &database,
+        &headers,
+        &body,
+        ResultShape::Raw,
+    )
+    .await
+}
+
+async fn dispatch(
+    state: &AppState,
+    account: &str,
+    database: &str,
+    headers: &HeaderMap,
+    body: &[u8],
+    shape: ResultShape,
+) -> Response {
+    match route_target(state, database) {
+        Target::Local => handle(state, headers, body, shape).await,
+        Target::Proxy(upstream) => {
+            if let Err(response) = authorize(state, headers) {
+                return *response;
+            }
+            proxy(state, &upstream, account, database, headers, body, shape).await
+        }
+        Target::Unknown => fail(
+            StatusCode::NOT_FOUND,
+            ERROR_BAD_REQUEST,
+            format!("unknown database {database}"),
+        ),
+    }
+}
+
+enum Target {
+    Local,
+    Proxy(String),
+    Unknown,
+}
+
+fn route_target(state: &AppState, database: &str) -> Target {
+    if state.routes.is_empty() && state.local_database_id.is_none() {
+        return Target::Local;
+    }
+    if state.local_database_id.as_deref() == Some(database) {
+        return Target::Local;
+    }
+    if let Some(upstream) = state.routes.get(database) {
+        return Target::Proxy(upstream.clone());
+    }
+    Target::Unknown
+}
+
+async fn proxy(
+    state: &AppState,
+    upstream: &str,
+    account: &str,
+    database: &str,
+    headers: &HeaderMap,
+    body: &[u8],
+    shape: ResultShape,
+) -> Response {
+    let Some((host, port)) = parse_upstream(upstream) else {
+        return fail(
+            StatusCode::BAD_GATEWAY,
+            ERROR_BAD_REQUEST,
+            "route upstream must be http://host:port",
+        );
+    };
+    if account.contains(['/', '?', ' ', '\r', '\n'])
+        || database.contains(['/', '?', ' ', '\r', '\n'])
+    {
+        return fail(
+            StatusCode::BAD_REQUEST,
+            ERROR_BAD_REQUEST,
+            "database id is not a single path segment",
+        );
+    }
+    let kind = match shape {
+        ResultShape::Objects => "query",
+        ResultShape::Raw => "raw",
+    };
+    let path = format!("/accounts/{account}/d1/database/{database}/{kind}");
+    match forward(&host, port, &path, headers, body, state.max_response_bytes).await {
+        Ok((status, bytes)) => {
+            let code = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+            (
+                code,
+                [(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static("application/json"),
+                )],
+                bytes,
+            )
+                .into_response()
+        }
+        Err(error) => fail(StatusCode::BAD_GATEWAY, ERROR_BAD_REQUEST, error),
+    }
+}
+
+fn parse_upstream(upstream: &str) -> Option<(String, u16)> {
+    let rest = upstream.strip_prefix("http://")?;
+    if rest.contains('/') {
+        return None;
+    }
+    let (host, port) = rest.split_once(':')?;
+    if host.is_empty() {
+        return None;
+    }
+    Some((host.to_string(), port.parse().ok()?))
+}
+
+async fn forward(
+    host: &str,
+    port: u16,
+    path: &str,
+    headers: &HeaderMap,
+    body: &[u8],
+    max_response_bytes: usize,
+) -> Result<(u16, Vec<u8>), String> {
+    let mut stream = tokio::net::TcpStream::connect((host, port))
+        .await
+        .map_err(|error| error.to_string())?;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {host}:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
+        body.len()
+    );
+    if let Some(value) = headers.get(header::AUTHORIZATION) {
+        let value = value
+            .to_str()
+            .map_err(|_| "authorization header".to_string())?;
+        request.push_str("Authorization: ");
+        request.push_str(value);
+        request.push_str("\r\n");
+    }
+    request.push_str("\r\n");
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .map_err(|error| error.to_string())?;
+    stream
+        .write_all(body)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut received = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = stream
+            .read(&mut buf)
+            .await
+            .map_err(|error| error.to_string())?;
+        if n == 0 {
+            break;
+        }
+        if received.len() + n > max_response_bytes + 64 * 1024 {
+            return Err("upstream response is too large".into());
+        }
+        received.extend_from_slice(&buf[..n]);
+    }
+    let text = String::from_utf8_lossy(&received);
+    let (head, payload) = text
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "upstream response has no header".to_string())?;
+    let status = head
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse::<u16>().ok())
+        .ok_or_else(|| "upstream status".to_string())?;
+    let payload = payload.as_bytes().to_vec();
+    if payload.len() > max_response_bytes {
+        return Err("upstream response is too large".into());
+    }
+    Ok((status, payload))
 }
 
 async fn handle(
@@ -150,13 +360,22 @@ async fn handle(
     body: &[u8],
     shape: ResultShape,
 ) -> Response {
+    if state.draining.load(Ordering::Relaxed) {
+        return leaving();
+    }
     if let Err(response) = authorize(state, headers) {
         return *response;
     }
-    let request = match parse_request(body, shape) {
+    let mut request = match parse_request(body, shape) {
         Ok(request) => request,
         Err(response) => return *response,
     };
+    if let Some(limit) = state.request_timeout {
+        request.deadline = Some(Instant::now() + limit);
+    }
+    if let Err(response) = apply_min_commit_index(&mut request, headers) {
+        return *response;
+    }
     match state.executor.enqueue(request) {
         EnqueueResult::Accepted(receiver) => wait_for_sql(state, receiver, shape).await,
         EnqueueResult::Full => {
@@ -185,6 +404,10 @@ async fn wait_for_sql(
             Ok(Err(SqlError::QueueFull)) => {
                 state.metrics.observe_sql("queue_full", shape, None);
                 queue_full()
+            }
+            Ok(Err(SqlError::TimedOut)) => {
+                state.metrics.observe_sql("timeout", shape, None);
+                request_timed_out()
             }
             Ok(Err(error)) => {
                 state.metrics.observe_sql("sql_error", shape, None);
@@ -223,15 +446,37 @@ fn limited_success(state: &AppState, response: &SqlResponse, shape: ResultShape)
         );
     }
     state.metrics.observe_sql("ok", shape, Some(observation));
-    (
-        StatusCode::OK,
-        [(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        )],
-        bytes,
-    )
-        .into_response()
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    if let Some(index) = response.commit_index {
+        headers.insert(
+            HeaderName::from_static("x-osd1-commit-index"),
+            HeaderValue::from_str(&index.to_string()).expect("commit index is digits"),
+        );
+    }
+    (StatusCode::OK, headers, bytes).into_response()
+}
+
+fn apply_min_commit_index(
+    request: &mut SqlRequest,
+    headers: &HeaderMap,
+) -> Result<(), Box<Response>> {
+    let Some(value) = headers.get("x-osd1-min-commit-index") else {
+        return Ok(());
+    };
+    let text = value.to_str().unwrap_or("");
+    match text.parse::<u64>() {
+        Ok(index) if index >= 1 => {
+            request.min_commit_index = Some(index);
+            Ok(())
+        }
+        _ => Err(Box::new(bad_request(
+            "x-osd1-min-commit-index must be an integer of 1 or more",
+        ))),
+    }
 }
 
 fn observation_from(response: &SqlResponse) -> SqlObservation {
@@ -303,6 +548,8 @@ fn parse_request(body: &[u8], shape: ResultShape) -> Result<SqlRequest, Box<Resp
         sql: sql.to_owned(),
         params,
         shape,
+        deadline: None,
+        min_commit_index: None,
     })
 }
 
@@ -367,6 +614,14 @@ fn bad_request(message: impl Into<String>) -> Response {
     fail(StatusCode::BAD_REQUEST, ERROR_BAD_REQUEST, message)
 }
 
+fn leaving() -> Response {
+    fail(
+        StatusCode::SERVICE_UNAVAILABLE,
+        ERROR_SQL,
+        "node is leaving the cluster",
+    )
+}
+
 fn shut_down() -> Response {
     fail(
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -422,6 +677,7 @@ fn json_response(status: StatusCode, body: impl Serialize) -> Response {
 #[derive(Serialize)]
 struct HealthBody {
     ok: bool,
+    ready: bool,
 }
 
 #[derive(Serialize)]
@@ -473,10 +729,11 @@ struct RawResults {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::Ordering;
     use std::sync::{Arc, Mutex};
 
     use axum::body::Body;
-    use axum::http::{header, HeaderMap, Request, StatusCode};
+    use axum::http::{header, HeaderMap, HeaderValue, Request, StatusCode};
     use http_body_util::BodyExt;
     use osd1_types::{
         EnqueueResult, ResultShape, SqlError, SqlExecutor, SqlRequest, SqlResponse, SqlValue,
@@ -536,6 +793,7 @@ mod tests {
         Outcome::Ready(Box::new(move || {
             Ok(SqlResponse {
                 statements: statements.clone(),
+                commit_index: None,
             })
         }))
     }
@@ -556,6 +814,7 @@ mod tests {
             SqlError::TransactionLeftOpen => SqlError::TransactionLeftOpen,
             SqlError::QueueFull => SqlError::QueueFull,
             SqlError::ShuttingDown => SqlError::ShuttingDown,
+            SqlError::TimedOut => SqlError::TimedOut,
         }
     }
 
@@ -661,6 +920,91 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn router_checks_the_token_then_proxies_and_rejects_an_unknown_id() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("upstream");
+        let port = listener.local_addr().expect("port").port();
+        let seen = std::sync::Arc::new(tokio::sync::Mutex::new(String::new()));
+        let seen_task = std::sync::Arc::clone(&seen);
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let mut buf = vec![0u8; 8192];
+            let n = stream.read(&mut buf).await.expect("read");
+            *seen_task.lock().await = String::from_utf8_lossy(&buf[..n]).into_owned();
+            let body = r#"{"success":true,"errors":[],"messages":[],"result":[]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await.expect("write");
+        });
+
+        let fake = std::sync::Arc::new(Fake {
+            requests: Mutex::new(Vec::new()),
+            outcome: ready_ok(vec![statement("n", 1)]),
+        });
+        let executor: std::sync::Arc<dyn SqlExecutor> = fake.clone();
+        let mut state = AppState::new(executor, Some("secret".to_string()));
+        state.local_database_id = Some("db-id".to_string());
+        state
+            .routes
+            .insert("other-db".to_string(), format!("http://127.0.0.1:{port}"));
+        let app = router(state);
+
+        let (status, _, body) = dispatch(
+            app.clone(),
+            post(
+                "/accounts/a/d1/database/other-db/query",
+                None,
+                r#"{"sql":"SELECT 1"}"#,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_failure(&body, 10000, "unauthorized");
+        assert!(seen.lock().await.is_empty(), "token was not checked first");
+
+        let (status, _, body) = dispatch(
+            app.clone(),
+            post(
+                "/accounts/a/d1/database/missing/query",
+                Some("Bearer secret"),
+                r#"{"sql":"SELECT 1"}"#,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_failure(&body, 7400, "unknown database missing");
+        assert!(seen.lock().await.is_empty());
+
+        let (status, _, body) = dispatch(
+            app.clone(),
+            post(
+                "/accounts/a/d1/database/other-db/query",
+                Some("Bearer secret"),
+                r#"{"sql":"SELECT 1"}"#,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["success"], json!(true));
+        let captured = seen.lock().await.clone();
+        assert!(captured.contains("POST /accounts/a/d1/database/other-db/query "));
+        assert!(captured.contains("Authorization: Bearer secret"));
+        assert!(fake.requests.lock().unwrap().is_empty());
+
+        let (status, _, _) = dispatch(
+            app,
+            post(QUERY, Some("Bearer secret"), r#"{"sql":"SELECT 1"}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(fake.requests.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
     async fn metrics_are_prometheus_text_and_count_a_query() {
         let (_fake, app) = app(ready_ok(vec![statement("n", 1)]), Some("secret"));
         let (status, _, _) = dispatch(
@@ -713,7 +1057,57 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body, json!({ "ok": true }));
+        assert_eq!(body, json!({ "ok": true, "ready": true }));
+    }
+
+    #[tokio::test]
+    async fn a_lagging_node_stays_up_and_a_draining_node_rejects_sql() {
+        let fake = Arc::new(Fake {
+            requests: Mutex::new(Vec::new()),
+            outcome: Outcome::Panic,
+        });
+        let executor: Arc<dyn SqlExecutor> = fake.clone();
+        let state = AppState::new(executor, Some("secret".to_string()));
+        state.metrics.enable_raft();
+        state.metrics.set_raft(3, 1, 100, 0, 2);
+        let app = router(state.clone());
+        let (status, _, body) = dispatch(
+            app,
+            Request::builder()
+                .method("GET")
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, json!({ "ok": true, "ready": false }));
+
+        state.draining.store(true, Ordering::Relaxed);
+        let app = router(state);
+        let (status, _, body) = dispatch(
+            app.clone(),
+            Request::builder()
+                .method("GET")
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body, json!({ "ok": false, "ready": false }));
+        let (status, _, body) = dispatch(
+            app,
+            post(
+                "/accounts/a/d1/database/b/query",
+                Some("Bearer secret"),
+                r#"{"sql":"SELECT 1"}"#,
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["errors"][0]["message"], "node is leaving the cluster");
+        assert!(fake.requests.lock().expect("requests").is_empty());
     }
 
     #[tokio::test]
@@ -872,6 +1266,54 @@ mod tests {
             assert_failure(&body, 10000, "unauthorized");
         }
         assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn min_commit_index_is_recorded_and_a_bad_value_is_rejected() {
+        let (fake, ok_app) = app(ready_ok(vec![statement("n", 1)]), None);
+        let mut request = post(QUERY, None, r#"{"sql":"SELECT 1"}"#);
+        request
+            .headers_mut()
+            .insert("x-osd1-min-commit-index", HeaderValue::from_static("4"));
+        let (status, _, _) = dispatch(ok_app, request).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(fake.requests.lock().unwrap()[0].min_commit_index, Some(4));
+
+        let (fake, rejected) = app(Outcome::Panic, None);
+        let mut request = post(QUERY, None, r#"{"sql":"SELECT 1"}"#);
+        request
+            .headers_mut()
+            .insert("x-osd1-min-commit-index", HeaderValue::from_static("0"));
+        let (status, _, body) = dispatch(rejected, request).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_failure(
+            &body,
+            7400,
+            "x-osd1-min-commit-index must be an integer of 1 or more",
+        );
+        assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_commit_index_is_returned_as_a_header() {
+        let (_fake, app) = app(
+            Outcome::Ready(Box::new(|| {
+                Ok(SqlResponse {
+                    statements: vec![statement("n", 1)],
+                    commit_index: Some(12),
+                })
+            })),
+            None,
+        );
+        let (status, headers, body) =
+            dispatch(app, post(QUERY, None, r#"{"sql":"SELECT 1"}"#)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            headers
+                .get("x-osd1-commit-index")
+                .and_then(|value| value.to_str().ok()),
+            Some("12")
+        );
     }
 
     #[tokio::test]

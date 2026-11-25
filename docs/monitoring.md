@@ -28,7 +28,7 @@ Use the address OSD1 listens on. The image listens on port 8080 inside the conta
 
 | Name | Labels | Meaning |
 | --- | --- | --- |
-| `osd1_http_requests_total` | `route`, `status` | HTTP responses. `route` is `health`, `metrics`, `query`, `raw`, or `other`. `status` is `200`, `400`, `401`, `413`, `429`, `500`, `504`, or `other` |
+| `osd1_http_requests_total` | `route`, `status` | HTTP responses. `route` is `health`, `metrics`, `query`, `raw`, `explorer`, or `other`. `/` and `/explorer` use `explorer`. `status` is `200`, `400`, `401`, `413`, `429`, `500`, `503`, `504`, or `other` |
 | `osd1_http_request_duration_seconds` | `route` | Time in the handler, including queue wait and JSON encoding |
 | `osd1_sql_requests_total` | `result`, `route` | Requests that reached the queue. `result` is `ok`, `sql_error`, `queue_full`, `timeout`, `shut_down`, or `response_too_large`. `route` is `query` or `raw` |
 | `osd1_sql_duration_seconds` | `route` | Time on the SQL thread. Queue wait is not included. Recorded when the result is `ok` or `response_too_large` |
@@ -40,6 +40,17 @@ Use the address OSD1 listens on. The image listens on port 8080 inside the conta
 | `osd1_sql_queue_capacity` | | How many requests may wait. The running request is outside this bound |
 | `osd1_build_info` | `version` | Always `1` |
 | `osd1_process_start_time_seconds` | | Unix time when this process started exporting metrics |
+| `osd1_raft_role` | | Raft only. 0 follower, 1 leader, 2 candidate, 3 learner |
+| `osd1_raft_term` | | Raft only. Current term |
+| `osd1_raft_commit_index` | | Raft only. Highest committed index on this node |
+| `osd1_raft_apply_index` | | Raft only. Highest index applied to this node's file |
+| `osd1_raft_apply_lag` | | Raft only. Committed entries not yet applied on this node. `/health` sets `ready` false above 32 |
+| `osd1_raft_peers` | | Raft only. Voters and learners in the current config, including this node |
+| `osd1_litestream_last_ok_seconds` | | Present when `OSD1_LITESTREAM_HEARTBEAT` is set. Unix time of the heartbeat file, or 0 when the file is absent |
+
+`/health` stays HTTP 200 while the process is up. In raft mode `ready` is false when `osd1_raft_apply_lag` is above 32. A process healthcheck that only checks the status code leaves that node running. The image healthcheck is `wget` of `/health`. Read `ready`, or alert on the gauge. Simple mode reports `ready` true and does not export the raft gauges. A node that is leaving returns HTTP 503 and `{"ok":false,"ready":false}`. New SQL on that node is rejected and is not queued.
+
+`deploy/prometheus-alerts.yml` defines `Osd1ReplicaStale`. It fires when `osd1_litestream_last_ok_seconds` is above 0 and more than 60 seconds behind wall time, for 1 minute. A 0 gauge means the sidecar has not confirmed a generation yet, and the alert stays quiet.
 
 Histogram buckets run from 50 microseconds to 10 seconds.
 

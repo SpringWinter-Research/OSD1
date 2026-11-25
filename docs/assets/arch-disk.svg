@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-labelledby="archDiskTitle archDiskDesc">
+  <title id="archDiskTitle">OSD1 files on disk</title>
+  <desc id="archDiskDesc">The database file and its WAL sit beside a raft directory. The log starts with OSD1LOG2 and each record is length, CRC-32, and payload. The snapshot file starts with OSD1SNAP1.</desc>
+  <style>
+    .box { fill: #141416; stroke: #2e2e38; }
+    .label { fill: #fafafa; font: 600 13px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .file { fill: #d7efe0; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .sub { fill: #8a8a93; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .byte { fill: #102418; stroke: #3DDC84; }
+    .byte-text { fill: #fafafa; font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+  <rect width="720" height="360" fill="#0a0a0a"/>
+  <text class="label" x="20" y="32">Database</text>
+  <text class="sub" x="20" y="52">mode 0600 · directory 0700</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">
+    <text class="file" x="20" y="80">osd1.db</text>
+    <text class="sub" x="150" y="80">SQLite · page_size 4096</text>
+    <text class="file" x="20" y="102">osd1.db-wal</text>
+    <text class="sub" x="150" y="102">passive checkpoint above 4 MiB</text>
+    <text class="file" x="20" y="124">osd1.db-shm</text>
+    <text class="sub" x="150" y="124">WAL index</text>
+  </g>
+  <text class="label" x="20" y="164">osd1.raft/</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">
+    <text class="file" x="20" y="190">log.dat</text>
+    <text class="sub" x="168" y="190">append-only · bad CRC refuses open</text>
+    <text class="file" x="20" y="212">vote.json</text>
+    <text class="sub" x="168" y="212">current vote</text>
+    <text class="file" x="20" y="234">meta.json</text>
+    <text class="sub" x="168" y="234">purge index, snapshot meta</text>
+    <text class="file" x="20" y="256">machine.json</text>
+    <text class="sub" x="168" y="256">last applied, membership, member ids</text>
+    <text class="file" x="20" y="278">snapshot.bin</text>
+    <text class="sub" x="168" y="278">machine JSON + SQLite pages</text>
+    <text class="file" x="20" y="300">next-command-id</text>
+    <text class="sub" x="168" y="300">synced before propose</text>
+    <text class="file" x="20" y="322">removed</text>
+    <text class="sub" x="168" y="322">later start exits 0</text>
+  </g>
+  <text class="label" x="400" y="32">log.dat record</text>
+  <g>
+    <rect class="byte" x="400" y="48" width="92" height="36" rx="4"/>
+    <text class="byte-text" x="446" y="70" text-anchor="middle">OSD1LOG2</text>
+    <rect class="byte" x="496" y="48" width="64" height="36" rx="4"/>
+    <text class="byte-text" x="528" y="70" text-anchor="middle">u32 len</text>
+    <rect class="byte" x="564" y="48" width="64" height="36" rx="4"/>
+    <text class="byte-text" x="596" y="70" text-anchor="middle">u32 crc</text>
+    <rect class="byte" x="632" y="48" width="68" height="36" rx="4"/>
+    <text class="byte-text" x="666" y="70" text-anchor="middle">payload</text>
+  </g>
+  <text class="sub" x="400" y="104">Header once. Then length, CRC-32 of the payload, payload.</text>
+  <text class="sub" x="400" y="124">A torn tail is truncated. A legacy log is rewritten</text>
+  <text class="sub" x="400" y="142">on the next mutation.</text>
+  <text class="label" x="400" y="180">snapshot.bin</text>
+  <g>
+    <rect class="byte" x="400" y="196" width="100" height="36" rx="4"/>
+    <text class="byte-text" x="450" y="218" text-anchor="middle">OSD1SNAP1</text>
+    <rect class="byte" x="504" y="196" width="72" height="36" rx="4"/>
+    <text class="byte-text" x="540" y="218" text-anchor="middle">u64 len</text>
+    <rect class="byte" x="580" y="196" width="56" height="36" rx="4"/>
+    <text class="byte-text" x="608" y="218" text-anchor="middle">json</text>
+    <rect class="byte" x="640" y="196" width="60" height="36" rx="4"/>
+    <text class="byte-text" x="670" y="218" text-anchor="middle">pages</text>
+  </g>
+  <text class="sub" x="400" y="256">Copied with the SQLite backup API into snapshot.pages,</text>
+  <text class="sub" x="400" y="274">then streamed here. The store does not keep a second copy.</text>
+  <text class="sub" x="400" y="308">Applied bodies live in the database, table osd1_applied,</text>
+  <text class="sub" x="400" y="326">primary key (origin, id), column body.</text>
+</svg>

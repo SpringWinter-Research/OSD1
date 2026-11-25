@@ -17,7 +17,7 @@ docker compose -f deploy/compose.yml down
 
 `down` without `-v` keeps the volume. A later `up` opens the same database file.
 
-Recorded on this machine with image `osd1-osd1`. `GET /health` returned `{"ok":true}`. `SELECT 1 AS n` returned `result[0].results` of `[{"n":1}]`. This request created the table and inserted one row:
+Recorded on this machine with image `osd1-osd1`. `GET /health` returned `{"ok":true}`. The current body also has `ready`: while the process is up it is `{"ok":true,"ready":true}` with status 200, and `ready` is false when raft apply lags commit by more than 32. A node that is leaving returns 503 and `{"ok":false,"ready":false}`. `SELECT 1 AS n` returned `result[0].results` of `[{"n":1}]`. This request created the table and inserted one row:
 
 ```json
 {"sql":"CREATE TABLE kept (id INTEGER PRIMARY KEY, note TEXT); INSERT INTO kept (note) VALUES (?);","params":["survived-restart"]}
@@ -48,6 +48,8 @@ persist ok
 The first JSON line is after `compose restart`. The second is after `compose up -d --force-recreate`.
 
 Litestream is not in this file. `deploy/compose.backup.yml` and `scripts/recovery.sh` add MinIO and Litestream. TLS for the same image is `./scripts/tls-check.sh`, which terminates TLS at nginx and forwards `Authorization` to OSD1.
+
+One database is one process. A router in front of those processes is `OSD1_ROUTER=1` and an `OSD1_ROUTES` file. Raft, when you turn it on, keeps its log in `<database>.raft` next to `/data/osd1.db`. A restart has to publish the same raft address. The request path, the log record, and the raft directory are in [Architecture](architecture.md). `deploy/compose.leader-backup.yml` is an optional third file that runs Litestream only while this process is the raft leader. The recovery point and the raft restore steps are in [Backup and restore](backup-restore.md).
 
 ## Metrics
 

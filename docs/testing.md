@@ -105,7 +105,7 @@ Host for the local runs: Darwin arm64. Dates are 2026-11-06.
 
 `./scripts/persist.sh` exited 0. `/data` was mode 700. `osd1.db` and `osd1.db-wal` were mode 600. The token did not appear in the container logs. The row `persist-restart-ok` was readable after restart and after force-recreate. Bodies are in `docs/operations.md`.
 
-`./scripts/tls-check.sh` exited 0. `https://127.0.0.1:8443/health` returned `{"ok":true}`. A query with no token and a query with the wrong token both returned HTTP 401. A query with the configured bearer token returned `"n":1`.
+`./scripts/tls-check.sh` exited 0. `https://127.0.0.1:8443/health` returned `{"ok":true}`. The current body also includes `ready`. A query with no token and a query with the wrong token both returned HTTP 401. A query with the configured bearer token returned `"n":1`.
 
 `./scripts/recovery-cases.sh` exited 0. Litestream restore against `http://127.0.0.1:9` exited 1 with `dial tcp 127.0.0.1:9: connect: connection refused`. The output file was absent. After `down -v` and a new volume, `SELECT note FROM gone` returned HTTP 400 and `sqlite error 1: no such table: gone`.
 

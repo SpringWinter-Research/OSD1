@@ -58,6 +58,8 @@ pub(crate) fn command_request(sql: &str, params_json: &str) -> Result<SqlRequest
         sql: sql.to_string(),
         params,
         shape: ResultShape::Objects,
+        deadline: None,
+        min_commit_index: None,
     })
 }
 
@@ -109,7 +111,10 @@ pub(crate) fn decode_body(body: &str) -> Result<SqlResponse, SqlError> {
             for statement in parsed.statements {
                 statements.push(statement_from_wire(statement)?);
             }
-            Ok(SqlResponse { statements })
+            Ok(SqlResponse {
+                statements,
+                commit_index: None,
+            })
         }
         "denied" => Err(SqlError::AuthorizerDenied {
             message: parsed.message,
@@ -190,6 +195,7 @@ mod tests {
     #[test]
     fn sql_result_round_trips_through_the_log_body() {
         let response = SqlResponse {
+            commit_index: None,
             statements: vec![StatementResult {
                 columns: Arc::from(vec!["n".to_string()]),
                 rows: vec![vec![SqlValue::Integer(7), SqlValue::Text("a".into())]],

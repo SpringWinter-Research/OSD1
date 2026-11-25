@@ -6,14 +6,14 @@ title: API examples
 
 These requests were run against a local `osd1` process started with `OSD1_API_TOKEN=test-token` and `OSD1_HTTP_ADDR=127.0.0.1:8091`.
 
-Health does not use the token and does not touch SQLite:
+Health does not use the token and does not touch SQLite. While the process is up the body includes `ready`. In raft mode `ready` is false when apply lags commit by more than 32, and the status stays 200. A node that is leaving returns 503 and `{"ok":false,"ready":false}`:
 
 ```bash
 curl -sS http://127.0.0.1:8091/health
 ```
 
 ```json
-{"ok":true}
+{"ok":true,"ready":true}
 ```
 
 `/query` returns one JSON object per row:

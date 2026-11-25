@@ -28,7 +28,7 @@ curl -sS http://127.0.0.1:8080/health
 ```
 
 ```json
-{"ok":true}
+{"ok":true,"ready":true}
 ```
 
 Open [http://127.0.0.1:8080/](http://127.0.0.1:8080/) for the table explorer. Sign in with the same bearer token, or leave it blank when the server has no token. The page lists tables, creates them, and runs SQL through `/raw`.
@@ -76,33 +76,34 @@ for await (const row of client.d1.database.query(
 | --- | --- | --- |
 | 200 | | The SQL ran |
 | 400 | 7500 | SQLite or the authorizer rejected it, or the JSON answer is too large |
-| 400 | 7400 | Malformed body, SQL, or parameter |
+| 400 | 7400 | Malformed body, SQL, parameter, or `x-osd1-min-commit-index` |
 | 401 | 10000 | Missing or wrong bearer token |
 | 413 | | Body is over the size limit. SQL does not run |
 | 429 | 10001 | The queue is full (`x-should-retry: false`) |
-| 504 | 7500 | Timed out waiting. The statement keeps running |
+| 504 | 7500 | Timed out. Simple mode and raft reads interrupt the statement at `OSD1_REQUEST_TIMEOUT_MS`. A raft read waiting on `x-osd1-min-commit-index` uses that same deadline. A raft write waits for raft |
 | 500 | 7500 | The SQL thread has stopped |
+| 503 | 7500 | The node is leaving the cluster. New SQL is not queued. Message `node is leaving the cluster` |
 
-Parameters may be null, text, integers, or finite floats. `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `ATTACH`, and `DETACH` are refused. Several statements in one request share one transaction.
+Parameters may be null, text, integers, or finite floats. `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `ATTACH`, and `DETACH` are refused. Several statements in one request share one transaction in simple mode, on a leader read, and on a raft apply. A follower read steps its statements with no transaction.
 
 ## Features
 
 - One SQLite file, one connection, one thread that runs SQL
 - Native SQL, with parameters bound by SQLite
-- One transaction per HTTP request
+- One transaction per HTTP request in simple mode, on a leader read, and on a raft apply
 - A fixed-size queue. Extra requests get 429
 - Bearer-token authentication
 - A table explorer at `/` and `/explorer`
 - `GET /metrics` in Prometheus text format, for Grafana
 - Optional Litestream sidecar for backup to S3
-- Optional Raft mode: followers serve local reads and forward writes to the leader
+- Optional Raft mode: followers serve local reads and forward writes to the leader. A write returns `x-osd1-commit-index`. A read can send it back as `x-osd1-min-commit-index` and wait for this node to apply that far. `/health` stays 200 while the process is up. `ready` is false when apply lags commit by more than 32
 - Published images for `linux/arm64` and `linux/amd64`
 
 ## Modes
 
 Simple mode never opens a Raft log. Leave `OSD1_NODE_ID` and every `OSD1_RAFT_*` variable unset. The quick start above is simple mode.
 
-Raft mode starts when any of those variables is set. The process then requires `OSD1_NODE_ID`, `OSD1_RAFT_LISTEN`, `OSD1_RAFT_SECRET`, and exactly one of `OSD1_RAFT_BOOTSTRAP=1` or `OSD1_RAFT_JOIN`. A running process stays in the mode it started in.
+Raft mode starts when any of those variables is set. The process then requires `OSD1_NODE_ID`, `OSD1_RAFT_LISTEN`, `OSD1_RAFT_SECRET`, and exactly one of `OSD1_RAFT_BOOTSTRAP=1` or `OSD1_RAFT_JOIN`. A running process stays in the mode it started in. The process shuts down on SIGINT and SIGTERM.
 
 ```bash
 # First node. This bootstraps the cluster.
@@ -128,15 +129,25 @@ cargo run -p osd1-server
 
 Each process has its own database file, HTTP port, node id, and raft port. Every node uses the same `OSD1_RAFT_SECRET`. `OSD1_RAFT_BOOTSTRAP` also accepts `true`.
 
-The bootstrap process is the first leader. A joined node becomes a voting member. Clients call `/query` and `/raw` on any node's HTTP address. A follower serves reads from its own file and sets `served_by_primary` to false. It forwards writes to the leader and returns the usual 200 envelope. `served_by_region` stays `WNAM`.
+The bootstrap process is the first leader. A joined node is a learner. It replicates, and it serves local reads. It does not vote. Set `OSD1_RAFT_VOTER=1` on a join when that process should be one of the three voters. Clients call `/query` and `/raw` on any node's HTTP address. A follower serves reads from its own file and sets `served_by_primary` to false. It forwards writes to the leader and returns the usual 200 envelope. `served_by_region` stays `WNAM`. A local read can lag during a partition.
 
-A write commits when a majority has stored the log entry. Two nodes commit only after both have stored it. Three nodes commit after two.
+A read that sends `x-osd1-min-commit-index` waits until this node's apply index reaches that value. The wait reads the metrics watch and ends at the read deadline with HTTP 504. `/health` stays 200 while the process is up. The body is `{"ok":true,"ready":true}`. `ready` is false when the commit index is more than 32 ahead of the apply index (`osd1_raft_apply_lag`). The image healthcheck is `wget` of `/health`, so a lagging follower stays up. A node that is leaving returns 503 and `{"ok":false,"ready":false}`. See [Monitoring](docs/monitoring.md).
 
-The Raft log is in memory. Restarting a process drops it. A restarted process must not rejoin a live cluster with its old database file. Litestream, when you run it, stays a sidecar of the leader. Replication is the Raft log.
+A write commits when a majority of the voters has stored the log entry. Two voters commit only after both have stored it. Three voters commit after two. Learners do not change that count.
+
+The append-only log, the vote, the membership, and the next command id are files in `<database>.raft` beside the database file. `log.dat` starts with `OSD1LOG2`. Each record carries a CRC-32 of its payload. Applied results live in the SQLite table `osd1_applied`, in the same transaction as the user SQL. After the log purges an index, a stored body applied in the last 3 seconds stays until a later purge. That clock is memory on the SQL thread, so a restart drops it. Snapshots copy pages with SQLite’s backup API. The layout, the write path, and the byte formats are in [Architecture](docs/architecture.md).
+
+Restart a process with the same node id, the same `OSD1_RAFT_LISTEN`, and the same `OSD1_DB_PATH`. An existing raft directory skips bootstrap and join. Bind every voter again before expecting a new write: one voter by itself cannot form a majority, and the process stays up until the others return. A fresh directory still needs `OSD1_RAFT_BOOTSTRAP=1` or `OSD1_RAFT_JOIN`.
+
+`OSD1_RAFT_REMOVE=4`, with `OSD1_RAFT_JOIN` pointed at a live member and the same secret, drops node 4 and exits. The leader tells node 4. That process writes `<database>.raft/removed`, returns 503 from `/health`, rejects new SQL with `node is leaving the cluster`, finishes SQL it has already accepted (up to 5 seconds), stops HTTP, and exits. A later start of the same database exits too. Joins and removals run one at a time. Use removal while a majority is still up.
+
+Litestream, when you run it, stays a sidecar. `scripts/litestream-leader.sh` replicates while this process is the leader (or all the time in simple mode, which has no raft role). Nodes catch up through the raft log. The restore steps for a raft cluster are in [Backup and restore](docs/backup-restore.md).
 
 Raft mode refuses `random`, `randomblob`, `date`, `time`, `datetime`, `julianday`, `strftime`, `unixepoch`, `current_date`, `current_time`, and `current_timestamp`, so a committed statement replays the same way on every node. `last_insert_rowid` stays allowed.
 
-`/metrics` adds `osd1_raft_role`, `osd1_raft_term`, `osd1_raft_commit_index`, `osd1_raft_apply_index`, and `osd1_raft_peers` in raft mode. `osd1_raft_role` is 0 for a follower, 1 for a leader, 2 for a candidate, and 3 for a learner.
+One database is one process. To front several databases, run `OSD1_ROUTER=1` with `OSD1_ROUTES` pointing each database id at `http://host:port`. Set `OSD1_DATABASE_ID` on a process that should serve only that id. Leave both unset and the path ids stay ignored.
+
+`/metrics` adds `osd1_raft_role`, `osd1_raft_term`, `osd1_raft_commit_index`, `osd1_raft_apply_index`, `osd1_raft_apply_lag`, and `osd1_raft_peers` in raft mode. `osd1_raft_role` is 0 for a follower, 1 for a leader, 2 for a candidate, and 3 for a learner.
 
 ## Configuration
 
@@ -148,15 +159,21 @@ Raft mode refuses `random`, `randomblob`, `date`, `time`, `datetime`, `julianday
 | `OSD1_QUEUE_CAPACITY` | `64` | Requests allowed to wait |
 | `OSD1_MAX_BODY_BYTES` | 1 MiB | Largest request body |
 | `OSD1_MAX_RESPONSE_BYTES` | 1 MiB | Largest success JSON |
-| `OSD1_REQUEST_TIMEOUT_MS` | `30000` | `0` waits without a deadline |
+| `OSD1_REQUEST_TIMEOUT_MS` | `30000` | Deadline for simple mode and for a raft read, including a read that waits on `x-osd1-min-commit-index`. The statement is interrupted. `0` waits without a deadline. A raft write waits for raft |
 | `OSD1_SERVED_BY_COLO` | `LOC` | Value copied into result metadata |
 | `OSD1_NODE_ID` | unset | Raft node id, a `u64`. Set with the variables below to leave simple mode |
 | `OSD1_RAFT_LISTEN` | unset | Raft TCP address, `host:port` |
 | `OSD1_RAFT_SECRET` | unset | Shared secret on the raft port |
-| `OSD1_RAFT_BOOTSTRAP` | unset | `1` or `true` starts a new cluster |
-| `OSD1_RAFT_JOIN` | unset | Raft address of a node already in the cluster |
+| `OSD1_RAFT_BOOTSTRAP` | unset | `1` or `true` starts a new cluster. Ignored when `<database>.raft` already has state |
+| `OSD1_RAFT_JOIN` | unset | Raft address of a node already in the cluster. Ignored when this node's raft directory already has state |
+| `OSD1_RAFT_VOTER` | unset | `1` or `true` makes this join a voter. The default join is a learner |
+| `OSD1_RAFT_REMOVE` | unset | Node id to drop. Also set `OSD1_RAFT_JOIN` and `OSD1_RAFT_SECRET`. The caller exits after the call. The removed node returns 503, finishes accepted SQL for up to 5 seconds, then exits. A later start of that database exits too |
+| `OSD1_ROUTER` | unset | `1` or `true` serves the route table and does not open a database |
+| `OSD1_ROUTES` | unset | File of `database_id http://host:port` lines. Blank lines and `#` comments are skipped |
+| `OSD1_DATABASE_ID` | unset | Path id this process serves from its own file |
+| `OSD1_LITESTREAM_HEARTBEAT` | unset | File the sidecar touches. `/metrics` then exports `osd1_litestream_last_ok_seconds` |
 
-A directory OSD1 creates is mode `0700`. The database, WAL, and shared-memory files are mode `0600`. The API token is redacted from the startup log.
+A directory OSD1 creates is mode `0700`. The database, WAL, shared-memory, and raft files are mode `0600`. The API token is redacted from the startup log.
 
 ## Benchmarks
 
@@ -206,6 +223,8 @@ Docker checks use port 8080. Run them one at a time:
 
 ## Documentation
 
+- [Architecture](docs/architecture.md)
+- [System design](docs/system-design.md)
 - [API examples](docs/api-examples.md)
 - [SDK compatibility](docs/compatibility.md)
 - [Operations](docs/operations.md)

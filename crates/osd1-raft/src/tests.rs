@@ -26,6 +26,7 @@ fn command(id: u64, sql: &str) -> SqlCommand {
         id,
         sql: sql.to_string(),
         params_json: "[]".to_string(),
+        log_index: 0,
     }
 }
 
@@ -340,6 +341,440 @@ async fn thirty_writes_replicate() {
     for node in &nodes {
         node.shutdown().await.expect("shutdown");
     }
+}
+
+#[tokio::test]
+async fn learners_do_not_change_quorum() {
+    let peers = Peers::new();
+    let leader = RaftNode::start(1, peers.clone(), SqlStore::new())
+        .await
+        .expect("start");
+    leader.bootstrap().await.expect("bootstrap");
+    let reader = RaftNode::start(2, peers.clone(), SqlStore::new())
+        .await
+        .expect("reader");
+    leader.add_learner(2, "2").await.expect("learner");
+    reader
+        .wait_until(|status| status.role == "learner", Duration::from_secs(5))
+        .await
+        .expect("reader is a learner");
+    let reader_status = reader.status().await.expect("reader status");
+    assert_eq!(
+        reader_status.peers, 2,
+        "learner must count itself: {reader_status:?}"
+    );
+    let leader_status = leader.status().await.expect("leader status");
+    assert_eq!(
+        leader_status.peers, reader_status.peers,
+        "{leader_status:?}"
+    );
+    peers.isolate(2).await;
+    leader
+        .propose(command(1, "create table t(n integer)"))
+        .await
+        .expect("one voter still commits");
+    leader.shutdown().await.expect("shutdown");
+    reader.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test]
+async fn removed_voter_leaves_the_membership() {
+    let nodes = form(&[1, 2, 3]).await;
+    let lead = leader(&nodes).await;
+    lead.remove_member(3).await.expect("remove");
+    let status = lead.status().await.expect("status");
+    assert_eq!(status.peers, 2, "{status:?}");
+    lead.propose(command(1, "create table t(n integer)"))
+        .await
+        .expect("two voters still commit");
+    for node in &nodes {
+        node.shutdown().await.expect("shutdown");
+    }
+}
+
+#[tokio::test]
+async fn parallel_voter_joins_both_commit() {
+    let peers = Peers::new();
+    let mut nodes = Vec::new();
+    for id in [1, 2, 3] {
+        nodes.push(
+            RaftNode::start(id, peers.clone(), SqlStore::new())
+                .await
+                .expect("start"),
+        );
+    }
+    nodes[0].bootstrap().await.expect("bootstrap");
+    let lead = nodes[0].clone();
+    let (first, second) = tokio::join!(lead.add_voter(2, "2"), lead.add_voter(3, "3"));
+    first.expect("voter 2");
+    second.expect("voter 3");
+    let status = nodes[0].status().await.expect("status");
+    assert_eq!(status.peers, 3, "{status:?}");
+    for node in &nodes {
+        node.shutdown().await.expect("shutdown");
+    }
+}
+
+#[tokio::test]
+async fn log_appends_do_not_rewrite_the_prefix() {
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-log-append-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut store = SqlStore::open(&dir).expect("open");
+    let entry = |index: u64| Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), index),
+        payload: EntryPayload::Blank,
+    };
+    store.append_to_log([entry(1)]).await.expect("append 1");
+    let first = std::fs::read(dir.join("log.dat")).expect("log");
+    store.append_to_log([entry(2)]).await.expect("append 2");
+    let second = std::fs::read(dir.join("log.dat")).expect("log");
+    assert!(second.starts_with(&first), "append rewrote the log prefix");
+    assert!(second.len() > first.len());
+    assert!(first.starts_with(b"OSD1LOG2"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_bad_log_checksum_refuses_to_open() {
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-log-crc-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut store = SqlStore::open(&dir).expect("open");
+    let entry = Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), 1),
+        payload: EntryPayload::Blank,
+    };
+    store.append_to_log([entry]).await.expect("append");
+    drop(store);
+    let path = dir.join("log.dat");
+    let mut bytes = std::fs::read(&path).expect("log");
+    let last = bytes.len() - 1;
+    bytes[last] ^= 0xff;
+    std::fs::write(&path, &bytes).expect("corrupt");
+    match SqlStore::open(&dir) {
+        Ok(_) => panic!("a bad checksum opened"),
+        Err(error) => assert!(error.to_string().contains("checksum"), "{error}"),
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_legacy_log_is_rewritten_with_checksums() {
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+    use openraft::RaftLogReader;
+
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-log-legacy-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("dir");
+    let entry = Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), 1),
+        payload: EntryPayload::Blank,
+    };
+    let payload = serde_json::to_vec(&entry).expect("json");
+    let mut legacy = Vec::new();
+    legacy.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    legacy.extend_from_slice(&payload);
+    std::fs::write(dir.join("log.dat"), &legacy).expect("legacy");
+    let mut store = SqlStore::open(&dir).expect("open legacy");
+    let loaded = store.try_get_log_entries(..).await.expect("entries");
+    assert_eq!(loaded.len(), 1);
+    let next = Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), 2),
+        payload: EntryPayload::Blank,
+    };
+    store.append_to_log([next]).await.expect("append");
+    let rewritten = std::fs::read(dir.join("log.dat")).expect("rewritten");
+    assert!(rewritten.starts_with(b"OSD1LOG2"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn snapshot_copy_does_not_hold_the_store_lock() {
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-snap-lock-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = SqlStore::open(&dir).expect("open");
+    let probe = store.clone();
+    store.set_snapshot_hook(std::sync::Arc::new(move |path| {
+        let probe = probe.clone();
+        Box::pin(async move {
+            assert!(
+                probe.write_permit_available().await,
+                "snapshot held the store write lock"
+            );
+            std::fs::write(&path, b"pages").map_err(|error| error.to_string())?;
+            Ok(())
+        })
+    }));
+    let mut builder = store.clone();
+    openraft::storage::RaftSnapshotBuilder::build_snapshot(&mut builder)
+        .await
+        .expect("snapshot");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn purged_membership_still_records_a_removed_member() {
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+    use openraft::Membership;
+    use std::collections::BTreeSet;
+
+    let mut store = SqlStore::new();
+    let entry = |index: u64, ids: &[u64]| Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), index),
+        payload: EntryPayload::Membership(Membership::new(
+            vec![BTreeSet::from_iter(ids.iter().copied())],
+            (),
+        )),
+    };
+    let first = entry(1, &[1, 2]);
+    let first_id = first.log_id;
+    store.append_to_log([first.clone()]).await.expect("append");
+    store.apply_to_state_machine(&[first]).await.expect("apply");
+    store.purge_logs_upto(first_id).await.expect("purge");
+    let second = entry(2, &[1]);
+    store.append_to_log([second.clone()]).await.expect("append");
+    store
+        .apply_to_state_machine(&[second])
+        .await
+        .expect("apply");
+    assert_eq!(store.membership_fate(2).await, (true, false));
+    assert_eq!(store.membership_fate(1).await, (true, true));
+    assert_eq!(store.membership_fate(9).await, (false, false));
+}
+
+#[tokio::test]
+async fn slow_apply_does_not_start_an_election() {
+    let peers = Peers::new();
+    let mut nodes = Vec::new();
+    for id in [1, 2, 3] {
+        let store = SqlStore::new();
+        store.set_apply_hook(std::sync::Arc::new(|_command| {
+            Box::pin(async move {
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                String::new()
+            })
+        }));
+        nodes.push(
+            RaftNode::start(id, peers.clone(), store)
+                .await
+                .expect("start"),
+        );
+    }
+    nodes[0].bootstrap().await.expect("bootstrap");
+    for id in [2, 3] {
+        nodes[0].add_voter(id, id.to_string()).await.expect("voter");
+    }
+    let lead = leader(&nodes).await;
+    let term = lead.status().await.expect("status").term;
+    lead.propose(command(1, "create table t(n integer)"))
+        .await
+        .expect("commit during slow apply");
+    for node in &nodes {
+        let status = node.status().await.expect("status");
+        assert_eq!(
+            status.term,
+            term,
+            "node {} changed term: {status:?}",
+            node.id()
+        );
+    }
+    for node in &nodes {
+        node.shutdown().await.expect("shutdown");
+    }
+}
+
+#[tokio::test]
+async fn durable_log_survives_restart() {
+    let root = std::env::temp_dir().join(format!(
+        "osd1-raft-disk-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("root");
+    let peers = Peers::new();
+    let mut nodes = Vec::new();
+    for id in [1_u64, 2, 3] {
+        let store = SqlStore::open(root.join(id.to_string())).expect("open");
+        nodes.push(
+            RaftNode::start(id, peers.clone(), store)
+                .await
+                .expect("start"),
+        );
+    }
+    nodes[0].bootstrap().await.expect("bootstrap");
+    nodes[0].add_voter(2, "2").await.expect("voter 2");
+    nodes[0].add_voter(3, "3").await.expect("voter 3");
+    nodes[0]
+        .propose(command(1, "create table t(n integer)"))
+        .await
+        .expect("commit");
+    wait_command(&nodes, 1).await;
+    for node in &nodes {
+        node.shutdown().await.expect("shutdown");
+    }
+
+    let peers = Peers::new();
+    let mut nodes = Vec::new();
+    for id in [1_u64, 2, 3] {
+        let store = SqlStore::open(root.join(id.to_string())).expect("reopen");
+        assert!(store.has_state().await, "node {id} lost its log");
+        nodes.push(
+            RaftNode::start(id, peers.clone(), store)
+                .await
+                .expect("restart"),
+        );
+    }
+    let lead = leader(&nodes).await;
+    assert!(
+        lead.applied().await.iter().any(|command| command.id == 1),
+        "restart dropped the committed command"
+    );
+    lead.propose(command(2, "insert into t values (1)"))
+        .await
+        .expect("commit after restart");
+    wait_command(&nodes, 2).await;
+    for node in &nodes {
+        node.shutdown().await.expect("shutdown");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
+async fn snapshot_carries_sqlite_bytes() {
+    let dir = std::env::temp_dir().join(format!("osd1-snap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = SqlStore::open(&dir).expect("open");
+    let installed = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let installed_hook = std::sync::Arc::clone(&installed);
+    store.set_snapshot_hook(std::sync::Arc::new(|path| {
+        Box::pin(async move {
+            std::fs::write(&path, b"sqlite-pages").map_err(|error| error.to_string())?;
+            Ok(())
+        })
+    }));
+    store.set_install_hook(std::sync::Arc::new(move |bytes| {
+        let installed_hook = std::sync::Arc::clone(&installed_hook);
+        Box::pin(async move {
+            *installed_hook.lock().expect("installed") = bytes;
+            Ok(())
+        })
+    }));
+    let mut builder = store.clone();
+    let snapshot = openraft::storage::RaftSnapshotBuilder::build_snapshot(&mut builder)
+        .await
+        .expect("snapshot");
+    assert!(snapshot
+        .snapshot
+        .get_ref()
+        .windows(9)
+        .any(|window| window == b"OSD1SNAP1"));
+    let mut target = store.clone();
+    openraft::RaftStorage::install_snapshot(&mut target, &snapshot.meta, snapshot.snapshot)
+        .await
+        .expect("install");
+    assert_eq!(
+        installed.lock().expect("installed").as_slice(),
+        b"sqlite-pages"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Times `append_to_log` on a durable store. Not part of `cargo test`.
+/// Run: `cargo test -p osd1-raft --release -- --ignored measure_append_fsync --nocapture`
+#[tokio::test]
+#[ignore = "disk timing of append_to_log"]
+async fn measure_append_fsync() {
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-append-fsync-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut store = SqlStore::open(&dir).expect("open");
+    let entry = |index: u64| Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), index),
+        payload: EntryPayload::Blank,
+    };
+    for index in 1..=5 {
+        store.append_to_log([entry(index)]).await.expect("warmup");
+    }
+    let mut samples = Vec::with_capacity(40);
+    for index in 6..=45 {
+        let started = std::time::Instant::now();
+        store.append_to_log([entry(index)]).await.expect("append");
+        samples.push(started.elapsed());
+    }
+    samples.sort();
+    let ms = |sample: std::time::Duration| sample.as_secs_f64() * 1000.0;
+    let n = samples.len();
+    eprintln!(
+        "append_fsync n={n} min={:.3}ms p50={:.3}ms p99={:.3}ms max={:.3}ms",
+        ms(samples[0]),
+        ms(samples[n / 2]),
+        ms(samples[n * 99 / 100]),
+        ms(samples[n - 1]),
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

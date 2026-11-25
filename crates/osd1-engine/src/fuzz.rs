@@ -1079,6 +1079,8 @@ fn run_osd(worker: &SqliteWorker, sql: &str, params: &[SqlValue]) -> Result<Vec<
             sql: sql.to_string(),
             params: params.to_vec(),
             shape: ResultShape::Raw,
+            deadline: None,
+            min_commit_index: None,
         })
         .map_err(|error| error.to_string())?;
     Ok(response

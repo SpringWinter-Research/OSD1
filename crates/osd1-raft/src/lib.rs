@@ -13,7 +13,10 @@
 //!
 //! - [`RaftNode::start`] registers a node on the shared [`Peers`] transport.
 //! - [`RaftNode::bootstrap`] initializes a one-node cluster. Call it once.
+//! - [`RaftNode::add_learner`] copies the log and leaves the node a non-voter.
 //! - [`RaftNode::add_voter`] commits a membership change after the learner catches up.
+//! - [`RaftNode::remove_member`] drops a voter or a learner while a majority is up.
+//! - [`SqlStore::open`] reloads the log, the vote, and the membership after a restart.
 //! - [`RaftNode::propose`] waits until the entry is committed and applied here.
 //!   A follower returns [`ProposeError::NotLeader`].
 //! - [`RaftNode::applied`] is the state machine's command list. A repeated
@@ -34,10 +37,16 @@ mod tests;
 pub use network::Peers;
 pub use node::RaftNode;
 pub use node::Status;
+pub use store::raft_dir;
+pub use store::raft_dir_has_state;
 pub use store::ApplyHook;
+pub use store::BodyHorizonHook;
+pub use store::InstallHook;
+pub use store::SnapshotHook;
 pub use store::SqlStore;
 pub use tcp::client_write;
 pub use tcp::join_cluster;
+pub use tcp::remove_member;
 pub use tcp::ClientWriteReply;
 pub use tcp::TcpNode;
 pub use types::NodeId;

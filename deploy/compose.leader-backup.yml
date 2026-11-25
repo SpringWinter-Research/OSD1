@@ -1,0 +1,26 @@
+# Leader-only Litestream. Use with the backup profile:
+#   docker compose -f deploy/compose.yml -f deploy/compose.backup.yml -f deploy/compose.leader-backup.yml --profile backup up -d
+# Simple mode has no raft role, so the script replicates continuously.
+# Raft mode replicates only while this node's osd1_raft_role is 1.
+# Point OSD1_METRICS_URL at the node whose file is mounted at /data.
+services:
+  litestream:
+    image: debian:bookworm-slim
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apt-get update
+        apt-get install -y --no-install-recommends ca-certificates wget
+        wget -q -O /tmp/litestream.tar.gz https://github.com/benbjohnson/litestream/releases/download/v0.5.18/litestream-v0.5.18-linux-amd64.tar.gz
+        tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz
+        exec /bin/sh /scripts/litestream-leader.sh
+    environment:
+      OSD1_METRICS_URL: http://osd1:8080/metrics
+      OSD1_LITESTREAM_HEARTBEAT: /data/litestream-ok
+      OSD1_DB_PATH: /data/osd1.db
+      LITESTREAM_CONFIG: /etc/litestream.yml
+    volumes:
+      - ../scripts/litestream-leader.sh:/scripts/litestream-leader.sh:ro
+  osd1:
+    environment:
+      OSD1_LITESTREAM_HEARTBEAT: /data/litestream-ok

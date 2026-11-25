@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 1088" role="img" aria-labelledby="archLowTitle archLowDesc">
+  <title id="archLowTitle">Low-level path inside one OSD1 node</title>
+  <desc id="archLowDesc">A raft write allocates a command id with no store lock, the raft core awaits the log fsync while the Adaptor lock is held and SqlStore.inner is not, then the core sends apply without waiting. The state-machine worker holds the Adaptor lock across execute_idempotent on the osd1-sql thread. A leader read uses BEGIN IMMEDIATE. A follower read does not. Snapshot page copy holds neither lock. The snapshot file read and install hold the Adaptor lock.</desc>
+  <style>
+    .box { fill: #141416; stroke: #2e2e38; }
+    .accent { fill: #102418; stroke: #3DDC84; }
+    .label { fill: #fafafa; font: 600 13px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .task { fill: #3DDC84; font: 600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .sub { fill: #a3b5a6; font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .muted { fill: #8a8a93; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .head { fill: #3DDC84; font: 600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; }
+  </style>
+  <rect width="760" height="1088" fill="#0a0a0a"/>
+
+  <text class="label" x="16" y="28">Low level · one node</text>
+
+  <g>
+    <rect class="box" x="16" y="42" width="236" height="52" rx="8"/>
+    <text class="task" x="28" y="62">SqlStore.inner</text>
+    <text class="sub" x="28" y="80">dropped before fsync and SQL</text>
+    <rect class="accent" x="260" y="42" width="248" height="52" rx="8"/>
+    <text class="task" x="272" y="62">Adaptor RwLock</text>
+    <text class="sub" x="272" y="80">held across append and apply</text>
+    <rect class="accent" x="516" y="42" width="228" height="52" rx="8"/>
+    <text class="task" x="528" y="62">osd1-sql</text>
+    <text class="sub" x="528" y="80">the only SQLite caller</text>
+  </g>
+
+  <text class="head" x="16" y="122">WRITE</text>
+
+  <g>
+    <rect class="box" x="16" y="134" width="728" height="70" rx="8"/>
+    <text class="task" x="28" y="158">1  tokio</text>
+    <text class="label" x="148" y="158">RaftExec::write</text>
+    <text class="sub" x="148" y="178">CommandIds::allocate in spawn_blocking</text>
+    <text class="sub" x="148" y="194">fsync next-command-id before propose · no store lock</text>
+  </g>
+  <g>
+    <rect class="box" x="16" y="212" width="728" height="70" rx="8"/>
+    <text class="task" x="28" y="236">2  tokio</text>
+    <text class="label" x="148" y="236">RaftExec::forward</text>
+    <text class="sub" x="148" y="256">KIND_WRITE carries the same (origin, id) for 3 s</text>
+    <text class="sub" x="148" y="272">50 ms with no leader · 30 ms after a missed attempt</text>
+  </g>
+  <g>
+    <rect class="accent" x="16" y="290" width="728" height="86" rx="8"/>
+    <text class="task" x="28" y="314">3  raft core</text>
+    <text class="label" x="148" y="314">append_to_log · the core awaits the fsync</text>
+    <text class="sub" x="148" y="334">Adaptor write guard held for the whole future</text>
+    <text class="sub" x="148" y="350">inner.write plans the suffix, then that guard drops</text>
+    <text class="sub" x="148" y="366">write_log_job fsyncs on a blocking thread</text>
+  </g>
+  <g>
+    <rect class="box" x="16" y="384" width="728" height="70" rx="8"/>
+    <text class="task" x="28" y="408">4  raft core</text>
+    <text class="label" x="148" y="408">apply_to_state_machine</text>
+    <text class="sub" x="148" y="428">sm_handle.send of the apply command</text>
+    <text class="sub" x="148" y="444">the core does not await the SQL hook</text>
+  </g>
+  <g>
+    <rect class="accent" x="16" y="462" width="728" height="86" rx="8"/>
+    <text class="task" x="28" y="486">5  sm worker</text>
+    <text class="label" x="148" y="486">apply_to_state_machine</text>
+    <text class="sub" x="148" y="506">Adaptor write guard held until the hook returns</text>
+    <text class="sub" x="148" y="522">inner.write records last_applied, then drops</text>
+    <text class="sub" x="148" y="538">ApplyHook calls execute_idempotent via spawn_blocking</text>
+  </g>
+  <g>
+    <rect class="accent" x="16" y="556" width="728" height="102" rx="8"/>
+    <text class="task" x="28" y="580">6  osd1-sql</text>
+    <text class="label" x="148" y="580">execute_idempotent</text>
+    <text class="sub" x="148" y="600">BEGIN IMMEDIATE · INSERT OR IGNORE osd1_applied</text>
+    <text class="sub" x="148" y="616">new row: run_request, size_after if changed_db, UPDATE body, COMMIT</text>
+    <text class="sub" x="148" y="632">replay: SELECT body, ROLLBACK, return the stored body</text>
+    <text class="sub" x="148" y="648">deadline is empty · progress handler sees no deadline</text>
+  </g>
+
+  <text class="head" x="16" y="686">READ · RaftExec::read</text>
+  <g>
+    <rect class="accent" x="16" y="698" width="356" height="132" rx="8"/>
+    <text class="task" x="28" y="722">leader</text>
+    <text class="sub" x="28" y="744">enqueue → Job::Execute</text>
+    <text class="sub" x="28" y="762">execute_request</text>
+    <text class="sub" x="28" y="780">BEGIN IMMEDIATE / COMMIT</text>
+    <text class="sub" x="28" y="798">served_by_primary stays true</text>
+    <text class="sub" x="28" y="816">deadline set · handler can interrupt</text>
+  </g>
+  <g>
+    <rect class="box" x="388" y="698" width="356" height="132" rx="8"/>
+    <text class="task" x="400" y="722">follower</text>
+    <text class="sub" x="400" y="744">enqueue_read → Job::Read</text>
+    <text class="sub" x="400" y="762">read_request</text>
+    <text class="sub" x="400" y="780">no BEGIN</text>
+    <text class="sub" x="400" y="798">a writable statement is refused</text>
+    <text class="sub" x="400" y="816">served_by_primary false · same deadline</text>
+  </g>
+
+  <text class="head" x="16" y="858">SNAPSHOT</text>
+  <g>
+    <rect class="box" x="16" y="870" width="236" height="128" rx="8"/>
+    <text class="task" x="28" y="894">build</text>
+    <text class="sub" x="28" y="916">spawned task, not the core</text>
+    <text class="sub" x="28" y="934">backup API · 100 pages</text>
+    <text class="sub" x="28" y="952">runs on osd1-sql</text>
+    <text class="sub" x="28" y="970">inner free · Adaptor free</text>
+  </g>
+  <g>
+    <rect class="accent" x="262" y="870" width="236" height="128" rx="8"/>
+    <text class="task" x="274" y="894">send</text>
+    <text class="sub" x="274" y="916">get_current_snapshot</text>
+    <text class="sub" x="274" y="934">Adaptor held for fs::read</text>
+    <text class="sub" x="274" y="952">Cursor&lt;Vec&lt;u8&gt;&gt;</text>
+    <text class="sub" x="274" y="970">send_snapshot after drop</text>
+  </g>
+  <g>
+    <rect class="accent" x="508" y="870" width="236" height="128" rx="8"/>
+    <text class="task" x="520" y="894">install</text>
+    <text class="sub" x="520" y="916">install_snapshot</text>
+    <text class="sub" x="520" y="934">Adaptor held for install_main</text>
+    <text class="sub" x="520" y="952">replace db, drop -wal -shm</text>
+    <text class="sub" x="520" y="970">reopen the one connection</text>
+  </g>
+
+  <text class="muted" x="16" y="1024">Heartbeat replication does not take the log store. The core still waits inside append_to_log</text>
+  <text class="muted" x="16" y="1044">until that fsync returns. Election timeout is 150–300 ms. The fsync length is unmeasured.</text>
+  <text class="muted" x="16" y="1068">A simple-mode request skips raft and takes the leader read path: Job::Execute with a deadline.</text>
+</svg>

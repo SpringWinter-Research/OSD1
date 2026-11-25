@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 248" role="img" aria-labelledby="archProcessTitle archProcessDesc">
+  <title id="archProcessTitle">OSD1 request path</title>
+  <desc id="archProcessDesc">A client calls HTTP. Query and raw enter a bounded FIFO queue, then the single SQL thread, then one SQLite file. A full queue returns 429. Health, metrics, and the explorer do not enter the queue.</desc>
+  <style>
+    .box { fill: #141416; stroke: #2e2e38; }
+    .accent { fill: #102418; stroke: #3DDC84; }
+    .label { fill: #fafafa; font: 600 14px Inter, ui-sans-serif, system-ui, sans-serif; }
+    .sub { fill: #a3b5a6; font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .arrow { stroke: #3DDC84; fill: none; stroke-width: 1.5; }
+    .muted { fill: #8a8a93; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+  </style>
+  <rect width="720" height="248" fill="#0a0a0a"/>
+  <g>
+    <rect class="box" x="16" y="36" width="112" height="72" rx="8"/>
+    <text class="label" x="72" y="68" text-anchor="middle">Client</text>
+    <text class="sub" x="72" y="88" text-anchor="middle">D1 HTTP</text>
+  </g>
+  <path class="arrow" d="M128 72 H148"/>
+  <path d="M148 72 l-6 -4 v8 z" fill="#3DDC84"/>
+  <g>
+    <rect class="box" x="154" y="36" width="128" height="72" rx="8"/>
+    <text class="label" x="218" y="64" text-anchor="middle">HTTP</text>
+    <text class="sub" x="218" y="84" text-anchor="middle">/query /raw</text>
+  </g>
+  <path class="arrow" d="M282 72 H302"/>
+  <path d="M302 72 l-6 -4 v8 z" fill="#3DDC84"/>
+  <g>
+    <rect class="box" x="308" y="36" width="128" height="72" rx="8"/>
+    <text class="label" x="372" y="64" text-anchor="middle">FIFO</text>
+    <text class="sub" x="372" y="84" text-anchor="middle">capacity 64</text>
+  </g>
+  <path class="arrow" d="M436 72 H456"/>
+  <path d="M456 72 l-6 -4 v8 z" fill="#3DDC84"/>
+  <g>
+    <rect class="accent" x="462" y="36" width="140" height="72" rx="8"/>
+    <text class="label" x="532" y="64" text-anchor="middle">SQL thread</text>
+    <text class="sub" x="532" y="84" text-anchor="middle">one connection</text>
+  </g>
+  <path class="arrow" d="M602 72 H622"/>
+  <path d="M622 72 l-6 -4 v8 z" fill="#3DDC84"/>
+  <g>
+    <rect class="accent" x="628" y="28" width="76" height="88" rx="8"/>
+    <text class="label" x="666" y="68" text-anchor="middle">db</text>
+    <text class="sub" x="666" y="88" text-anchor="middle">WAL</text>
+  </g>
+  <path class="arrow" d="M372 108 V132"/>
+  <path d="M372 132 l-4 -6 h8 z" fill="#8a8a93"/>
+  <text class="muted" x="372" y="150" text-anchor="middle">queue full → HTTP 429</text>
+  <text class="muted" x="16" y="188">/health  /metrics  /  /explorer stay off this queue</text>
+  <text class="muted" x="16" y="212">authorizer on the connection · one transaction per request · autocommit before the next</text>
+  <text class="muted" x="16" y="234">page_size 4096 · synchronous=FULL · quick_check must return ok</text>
+</svg>

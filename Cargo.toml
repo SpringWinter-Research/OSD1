@@ -19,7 +19,7 @@ osd1-types = { path = "crates/osd1-types" }
 osd1-engine = { path = "crates/osd1-engine" }
 osd1-http = { path = "crates/osd1-http" }
 osd1-raft = { path = "crates/osd1-raft" }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal", "net"] }

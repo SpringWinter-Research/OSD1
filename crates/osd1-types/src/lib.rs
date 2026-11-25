@@ -5,7 +5,10 @@
 //! `osd1-http`. This crate is the value types both sides share.
 
 use std::sync::Arc;
+use std::time::Instant;
 
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 /// SQL execution failed. The HTTP layer maps this to status 400, code [`ERROR_SQL`].
@@ -20,7 +23,7 @@ pub const ERROR_QUEUE_FULL: i64 = 10001;
 /// Region literal accepted by the `cloudflare@4.5.0` `served_by_region` union.
 pub const SERVED_BY_REGION: &str = "WNAM";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SqlValue {
     Null,
     Integer(i64),
@@ -107,9 +110,15 @@ pub struct SqlRequest {
     pub sql: String,
     pub params: Vec<SqlValue>,
     pub shape: ResultShape,
+    /// When set, the SQL thread stops the statement after this instant.
+    /// Raft writes leave this empty.
+    pub deadline: Option<Instant>,
+    /// When set, a raft read waits until this node's apply index reaches it.
+    /// Simple mode ignores it. The D1 SDK does not send it.
+    pub min_commit_index: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatementMeta {
     pub changed_db: bool,
     pub changes: u64,
@@ -123,7 +132,7 @@ pub struct StatementMeta {
     pub served_by_primary: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatementResult {
     pub columns: Arc<[String]>,
     pub rows: Vec<Vec<SqlValue>>,
@@ -131,9 +140,24 @@ pub struct StatementResult {
     pub success: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SqlResponse {
     pub statements: Vec<StatementResult>,
+    /// Raft log index of the write that produced this response.
+    /// Absent on reads, in simple mode, and in `osd1_applied`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_index: Option<u64>,
+}
+
+impl SqlResponse {
+    /// JSON stored beside the command id in `osd1_applied`.
+    pub fn to_stored(&self) -> Result<String, String> {
+        serde_json::to_string(self).map_err(|error| error.to_string())
+    }
+
+    pub fn from_stored(body: &str) -> Result<Self, String> {
+        serde_json::from_str(body).map_err(|error| error.to_string())
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -148,6 +172,10 @@ pub enum SqlError {
     QueueFull,
     #[error("sql worker is shut down")]
     ShuttingDown,
+    /// The deadline elapsed. Simple mode and raft reads interrupt the statement.
+    /// A raft write does not use this: the handler waits until raft accepts or rejects it.
+    #[error("sql request timed out")]
+    TimedOut,
 }
 
 #[derive(Debug)]

@@ -654,23 +654,85 @@ impl RaftStorage<TypeConfig> for SqlStore {
         &mut self,
         log_id: LogId<NodeId>,
     ) -> Result<(), StorageError<NodeId>> {
-        let job = {
+        let prepared = {
             let mut inner = self.inner.write().await;
-            inner.log.split_off(&log_id.index);
-            LogJob::Rewrite(inner.plan_rewrite()?)
+            let mut removed = inner.log.split_off(&log_id.index);
+            let log_bytes = inner.log_bytes;
+            let log_durable_index = inner.log_durable_index;
+            let log_v2 = inner.log_v2;
+            match inner.plan_rewrite() {
+                Ok(planned) => Ok((
+                    LogJob::Rewrite(planned),
+                    removed,
+                    log_bytes,
+                    log_durable_index,
+                    log_v2,
+                )),
+                Err(error) => {
+                    // `removed` starts at `log_id.index`, so its keys are greater.
+                    inner.log.append(&mut removed);
+                    inner.log_bytes = log_bytes;
+                    inner.log_durable_index = log_durable_index;
+                    inner.log_v2 = log_v2;
+                    Err(error)
+                }
+            }
         };
-        write_log_job(job).await
+        let (job, mut removed, log_bytes, log_durable_index, log_v2) = prepared?;
+        if let Err(error) = write_log_job(job).await {
+            let mut inner = self.inner.write().await;
+            inner.log.append(&mut removed);
+            inner.log_bytes = log_bytes;
+            inner.log_durable_index = log_durable_index;
+            inner.log_v2 = log_v2;
+            return Err(error);
+        }
+        Ok(())
     }
 
     async fn purge_logs_upto(&mut self, log_id: LogId<NodeId>) -> Result<(), StorageError<NodeId>> {
-        let job = {
+        let prepared = {
             let mut inner = self.inner.write().await;
             debug_assert!(inner.last_purged_log_id <= Some(log_id));
+            let previous_purged = inner.last_purged_log_id;
             inner.last_purged_log_id = Some(log_id);
-            inner.log = inner.log.split_off(&(log_id.index.saturating_add(1)));
-            LogJob::Rewrite(inner.plan_rewrite()?)
+            let mut prefix = std::mem::take(&mut inner.log);
+            inner.log = prefix.split_off(&(log_id.index.saturating_add(1)));
+            let log_bytes = inner.log_bytes;
+            let log_durable_index = inner.log_durable_index;
+            let log_v2 = inner.log_v2;
+            match inner.plan_rewrite() {
+                Ok(planned) => Ok((
+                    LogJob::Rewrite(planned),
+                    prefix,
+                    log_bytes,
+                    log_durable_index,
+                    log_v2,
+                    previous_purged,
+                )),
+                Err(error) => {
+                    // `prefix` holds indexes at or below `log_id`, so its keys are smaller.
+                    prefix.append(&mut inner.log);
+                    inner.log = prefix;
+                    inner.log_bytes = log_bytes;
+                    inner.log_durable_index = log_durable_index;
+                    inner.log_v2 = log_v2;
+                    inner.last_purged_log_id = previous_purged;
+                    Err(error)
+                }
+            }
         };
-        write_log_job(job).await?;
+        let (job, mut prefix, log_bytes, log_durable_index, log_v2, previous_purged) = prepared?;
+        if let Err(error) = write_log_job(job).await {
+            let mut inner = self.inner.write().await;
+            prefix.append(&mut inner.log);
+            inner.log = prefix;
+            inner.log_bytes = log_bytes;
+            inner.log_durable_index = log_durable_index;
+            inner.log_v2 = log_v2;
+            inner.last_purged_log_id = previous_purged;
+            return Err(error);
+        }
         self.flush_meta().await?;
         let hook = self.body_horizon_hook.read().expect("body horizon").clone();
         if let Some(hook) = hook {

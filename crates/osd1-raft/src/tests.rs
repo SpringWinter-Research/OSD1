@@ -561,6 +561,176 @@ async fn a_failed_rewrite_is_written_on_the_next_append() {
 }
 
 #[tokio::test]
+async fn a_failed_delete_conflict_restores_the_log() {
+    use openraft::storage::RaftLogReader;
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-log-delete-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut store = SqlStore::open(&dir).expect("open");
+    let normal = |index: u64, sql: &str| Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), index),
+        payload: EntryPayload::Normal(command(index, sql)),
+    };
+    store
+        .append_to_log([normal(1, "select 1")])
+        .await
+        .expect("append 1");
+    store
+        .append_to_log([normal(2, "select 2")])
+        .await
+        .expect("append 2");
+    store
+        .append_to_log([normal(3, "select 3")])
+        .await
+        .expect("append 3");
+    // A rewrite writes log.dat.tmp and renames it. An unwritable log.dat
+    // does not stop that. An unwritable directory does.
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).expect("chmod dir");
+    let failed = store
+        .delete_conflict_logs_since(LogId::new(CommittedLeaderId::new(1, 1), 2))
+        .await;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).expect("chmod dir back");
+    assert!(
+        failed.is_err(),
+        "unwritable directory accepted the delete: {failed:?}"
+    );
+    let sql_at = |entries: &[Entry<TypeConfig>], index: u64| {
+        entries.iter().find_map(|entry| {
+            if entry.log_id.index != index {
+                return None;
+            }
+            match &entry.payload {
+                EntryPayload::Normal(command) => Some(command.sql.clone()),
+                _ => None,
+            }
+        })
+    };
+    let memory = store.try_get_log_entries(..).await.expect("memory");
+    assert_eq!(memory.len(), 3);
+    assert_eq!(sql_at(&memory, 1).as_deref(), Some("select 1"));
+    assert_eq!(sql_at(&memory, 2).as_deref(), Some("select 2"));
+    assert_eq!(sql_at(&memory, 3).as_deref(), Some("select 3"));
+    let mut disk = SqlStore::open(&dir).expect("reopen");
+    let on_disk = disk.try_get_log_entries(..).await.expect("entries");
+    assert_eq!(on_disk.len(), 3);
+    assert_eq!(sql_at(&on_disk, 1).as_deref(), Some("select 1"));
+    assert_eq!(sql_at(&on_disk, 2).as_deref(), Some("select 2"));
+    assert_eq!(sql_at(&on_disk, 3).as_deref(), Some("select 3"));
+    drop(disk);
+    store
+        .append_to_log([normal(4, "select 4")])
+        .await
+        .expect("append 4");
+    let mut reopened = SqlStore::open(&dir).expect("reopen after append");
+    let entries = reopened.try_get_log_entries(..).await.expect("entries");
+    assert_eq!(entries.len(), 4);
+    assert_eq!(sql_at(&entries, 1).as_deref(), Some("select 1"));
+    assert_eq!(sql_at(&entries, 2).as_deref(), Some("select 2"));
+    assert_eq!(sql_at(&entries, 3).as_deref(), Some("select 3"));
+    assert_eq!(sql_at(&entries, 4).as_deref(), Some("select 4"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_failed_purge_restores_the_log() {
+    use openraft::storage::RaftLogReader;
+    use openraft::storage::RaftStorage;
+    use openraft::CommittedLeaderId;
+    use openraft::Entry;
+    use openraft::EntryPayload;
+    use openraft::LogId;
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!(
+        "osd1-log-purge-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut store = SqlStore::open(&dir).expect("open");
+    let normal = |index: u64, sql: &str| Entry::<TypeConfig> {
+        log_id: LogId::new(CommittedLeaderId::new(1, 1), index),
+        payload: EntryPayload::Normal(command(index, sql)),
+    };
+    store
+        .append_to_log([normal(1, "select 1")])
+        .await
+        .expect("append 1");
+    store
+        .append_to_log([normal(2, "select 2")])
+        .await
+        .expect("append 2");
+    store
+        .append_to_log([normal(3, "select 3")])
+        .await
+        .expect("append 3");
+    // A rewrite writes log.dat.tmp and renames it. An unwritable log.dat
+    // does not stop that. An unwritable directory does.
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).expect("chmod dir");
+    let failed = store
+        .purge_logs_upto(LogId::new(CommittedLeaderId::new(1, 1), 1))
+        .await;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).expect("chmod dir back");
+    assert!(
+        failed.is_err(),
+        "unwritable directory accepted the purge: {failed:?}"
+    );
+    let state = store.get_log_state().await.expect("log state");
+    assert!(state.last_purged_log_id.is_none());
+    let sql_at = |entries: &[Entry<TypeConfig>], index: u64| {
+        entries.iter().find_map(|entry| {
+            if entry.log_id.index != index {
+                return None;
+            }
+            match &entry.payload {
+                EntryPayload::Normal(command) => Some(command.sql.clone()),
+                _ => None,
+            }
+        })
+    };
+    let memory = store.try_get_log_entries(..).await.expect("memory");
+    assert_eq!(memory.len(), 3);
+    assert_eq!(sql_at(&memory, 1).as_deref(), Some("select 1"));
+    assert_eq!(sql_at(&memory, 2).as_deref(), Some("select 2"));
+    assert_eq!(sql_at(&memory, 3).as_deref(), Some("select 3"));
+    let mut disk = SqlStore::open(&dir).expect("reopen");
+    let on_disk = disk.try_get_log_entries(..).await.expect("entries");
+    assert_eq!(on_disk.len(), 3);
+    assert_eq!(sql_at(&on_disk, 1).as_deref(), Some("select 1"));
+    assert_eq!(sql_at(&on_disk, 2).as_deref(), Some("select 2"));
+    assert_eq!(sql_at(&on_disk, 3).as_deref(), Some("select 3"));
+    drop(disk);
+    store
+        .append_to_log([normal(4, "select 4")])
+        .await
+        .expect("append 4");
+    let mut reopened = SqlStore::open(&dir).expect("reopen after append");
+    let entries = reopened.try_get_log_entries(..).await.expect("entries");
+    assert_eq!(entries.len(), 4);
+    assert_eq!(sql_at(&entries, 1).as_deref(), Some("select 1"));
+    assert_eq!(sql_at(&entries, 2).as_deref(), Some("select 2"));
+    assert_eq!(sql_at(&entries, 3).as_deref(), Some("select 3"));
+    assert_eq!(sql_at(&entries, 4).as_deref(), Some("select 4"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn a_bad_log_checksum_refuses_to_open() {
     use openraft::storage::RaftStorage;
     use openraft::CommittedLeaderId;

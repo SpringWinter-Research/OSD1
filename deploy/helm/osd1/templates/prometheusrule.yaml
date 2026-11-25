@@ -1,0 +1,22 @@
+{{- if .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "osd1.fullname" . }}
+  labels:
+    {{- include "osd1.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: osd1
+      rules:
+        - alert: Osd1ReplicaStale
+          expr: osd1_litestream_last_ok_seconds > 0 and (time() - osd1_litestream_last_ok_seconds) > 60
+          for: 1m
+          labels:
+            severity: page
+          annotations:
+            summary: Litestream has not confirmed a replica generation for 60 seconds
+{{- end }}

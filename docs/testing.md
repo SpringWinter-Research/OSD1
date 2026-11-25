@@ -16,7 +16,7 @@ Three kinds of checks cover the product. One kind checks SQL and HTTP behavior. 
 | TLS | `./scripts/tls-check.sh` exited 0. Health was ok. A bad token was HTTP 401 |
 | Missing volume and failed restore | `./scripts/recovery-cases.sh` exited 0 |
 | Backup | `./scripts/recovery.sh` exited 0. The integrity check was `ok` |
-| Scan | `cargo audit` was clean for 77 crates. Trivy found 225 Debian issues. One of them is critical |
+| Scan | `cargo audit` was clean for 77 crates. Trivy found 225 issues on the recorded Debian 12.15 image. One of them is critical. This row is not a scan of the distroless `latest` or `2026-11-26` image |
 
 ## Functional categories
 
@@ -108,4 +108,4 @@ The host for the local runs is Darwin arm64.
 
 `./scripts/recovery.sh` exited 0. The restored row was `litestream-restore-ok`. `PRAGMA integrity_check` returned `ok`. Bodies are on the [backup and restore](backup-restore.md) page.
 
-`./scripts/scan.sh` exited 0. `cargo audit` 0.22.2 loaded 1409 advisories, scanned 77 crate dependencies, and exited 0 with no advisory records. Trivy (`aquasec/trivy:latest`, documentation path v0.76) scanned `osd1-osd1:latest` (Debian 12.15) and reported 225 vulnerabilities: 85 low, 103 medium, 36 high, 1 critical. That critical finding is `zlib1g` `CVE-2023-45853`, status `will_not_fix`. The image is not a clean scan. Details are on the [security scan](security-scan.md) page.
+`./scripts/scan.sh` exited 0. `cargo audit` 0.22.2 loaded 1409 advisories, scanned 77 crate dependencies, and exited 0 with no advisory records. Trivy (`aquasec/trivy:latest`, documentation path v0.76) scanned `osd1-osd1:latest` (Debian 12.15) and reported 225 vulnerabilities: 85 low, 103 medium, 36 high, 1 critical. That critical finding is `zlib1g` `CVE-2023-45853`, status `will_not_fix`. That scan is the recorded Debian 12.15 image. This page does not quote a scan of the distroless `latest` or `2026-11-26` image. Details are on the [security scan](security-scan.md) page.

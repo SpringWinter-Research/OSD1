@@ -1,0 +1,252 @@
+{{- include "osd1.validate" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "osd1.fullname" . }}
+  labels:
+    {{- include "osd1.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "osd1.headless" . }}
+  replicas: {{ .Values.replicaCount }}
+  podManagementPolicy: OrderedReady
+  revisionHistoryLimit: 3
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "osd1.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "osd1.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- if not .Values.auth.existingSecret }}
+        checksum/auth: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.litestream.enabled }}
+        checksum/litestream: {{ include (print $.Template.BasePath "/litestream-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "osd1.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .Values.affinity }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- else if .Values.raft.enabled }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "osd1.selectorLabels" . | nindent 20 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: osd1
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/osd1"]
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            {{- if .Values.raft.enabled }}
+            - name: raft
+              containerPort: {{ .Values.raft.port }}
+              protocol: TCP
+            {{- end }}
+          env:
+            - name: OSD1_DB_PATH
+              value: /data/osd1.db
+            - name: OSD1_HTTP_ADDR
+              value: 0.0.0.0:8080
+            - name: SQLITE_TMPDIR
+              value: /data
+            - name: OSD1_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "osd1.tokenSecret" . }}
+                  key: {{ .Values.auth.secretKey }}
+            {{- with .Values.config.queueCapacity }}
+            - name: OSD1_QUEUE_CAPACITY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.maxBodyBytes }}
+            - name: OSD1_MAX_BODY_BYTES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.maxResponseBytes }}
+            - name: OSD1_MAX_RESPONSE_BYTES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.requestTimeoutMs }}
+            - name: OSD1_REQUEST_TIMEOUT_MS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.servedByColo }}
+            - name: OSD1_SERVED_BY_COLO
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.databaseId }}
+            - name: OSD1_DATABASE_ID
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.litestream.enabled }}
+            - name: OSD1_LITESTREAM_HEARTBEAT
+              value: /data/litestream-ok
+            {{- end }}
+            {{- if .Values.raft.enabled }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OSD1_NODE_ID_FROM_HOSTNAME
+              value: "1"
+            - name: OSD1_NODE_ID_BASE
+              value: "1"
+            - name: OSD1_RAFT_VOTERS
+              value: {{ .Values.raft.voters | quote }}
+            - name: OSD1_RAFT_LISTEN
+              value: "0.0.0.0:{{ .Values.raft.port }}"
+            - name: OSD1_RAFT_ADVERTISE
+              value: "$(POD_NAME).{{ include "osd1.headless" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.raft.port }}"
+            - name: OSD1_HTTP_ADVERTISE
+              value: "$(POD_NAME).{{ include "osd1.headless" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:8080"
+            - name: OSD1_RAFT_BOOTSTRAP
+              value: "1"
+            - name: OSD1_RAFT_JOIN
+              value: "{{ include "osd1.fullname" . }}-0.{{ include "osd1.headless" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.raft.port }}"
+            - name: OSD1_RAFT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "osd1.raftSecret" . }}
+                  key: {{ .Values.raft.secretKey }}
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+        {{- if .Values.litestream.enabled }}
+        - name: litestream
+          image: "{{ .Values.litestream.image.repository }}:{{ .Values.litestream.image.tag }}"
+          imagePullPolicy: {{ .Values.litestream.image.pullPolicy }}
+          command: ["/bin/sh", "/scripts/litestream-leader.sh"]
+          env:
+            - name: OSD1_METRICS_URL
+              value: http://127.0.0.1:8080/metrics
+            - name: OSD1_LITESTREAM_HEARTBEAT
+              value: /data/litestream-ok
+            - name: OSD1_DB_PATH
+              value: /data/osd1.db
+            - name: LITESTREAM_CONFIG
+              value: /etc/litestream.yml
+            - name: LITESTREAM_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "osd1.litestreamSecret" . }}
+                  key: access-key-id
+            - name: LITESTREAM_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "osd1.litestreamSecret" . }}
+                  key: secret-access-key
+          resources:
+            {{- toYaml .Values.litestream.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            - name: litestream
+              mountPath: /etc/litestream.yml
+              subPath: litestream.yml
+            - name: litestream
+              mountPath: /scripts/litestream-leader.sh
+              subPath: litestream-leader.sh
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        {{- if .Values.litestream.enabled }}
+        - name: litestream
+          configMap:
+            name: {{ include "osd1.fullname" . }}-litestream
+            defaultMode: 0444
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "osd1.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}

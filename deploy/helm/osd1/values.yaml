@@ -1,0 +1,103 @@
+# Simple mode is one process and one file. replicaCount must stay 1.
+# Raft mode runs one process per pod. Each pod has its own file and its own volume.
+replicaCount: 1
+
+image:
+  repository: public.ecr.aws/c5l0h3s1/osd1
+  # Simple mode runs on this tag. Raft mode needs a rebuild that reads
+  # OSD1_RAFT_ADVERTISE and OSD1_NODE_ID_FROM_HOSTNAME.
+  tag: "2026-11-26"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+clusterDomain: cluster.local
+
+# Required. The chart does not invent a token, because a later upgrade would rotate it.
+auth:
+  existingSecret: ""
+  secretKey: token
+  token: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Leave storageClass empty to use the cluster default.
+persistence:
+  size: 10Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Empty keeps the process default.
+config:
+  queueCapacity: ""
+  maxBodyBytes: ""
+  maxResponseBytes: ""
+  requestTimeoutMs: ""
+  servedByColo: ""
+  databaseId: ""
+
+# Three voters is the cluster. Pods past raft.voters join as learners.
+# Do not scale replicaCount below raft.voters. A removed voter stays in the
+# quorum until OSD1_RAFT_REMOVE drops it. This chart does not remove members.
+raft:
+  enabled: false
+  voters: 3
+  port: 7000
+  existingSecret: ""
+  secretKey: raft-secret
+  secret: ""
+
+# Copies the database to S3. In raft mode the sidecar runs on every pod and
+# replicates only while that pod is the leader.
+litestream:
+  enabled: false
+  image:
+    repository: litestream/litestream
+    tag: "0.5"
+    pullPolicy: IfNotPresent
+  bucket: ""
+  path: osd1.db
+  endpoint: ""
+  region: us-east-1
+  forcePathStyle: false
+  existingSecret: ""
+  accessKeyId: ""
+  secretAccessKey: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+metrics:
+  annotations: true
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+  prometheusRule:
+    enabled: false
+    labels: {}
+
+networkPolicy:
+  enabled: false
+
+nodeSelector: {}
+tolerations: []
+# Set this to replace the chart's preferred pod anti-affinity.
+affinity: {}
+
+podAnnotations: {}

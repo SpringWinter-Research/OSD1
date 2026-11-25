@@ -1,0 +1,22 @@
+{{- include "osd1.validate" . }}
+OSD1 is one database file per pod. The client address is:
+
+  {{ include "osd1.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.service.port }}
+
+The bearer token is the `{{ .Values.auth.secretKey }}` key in secret {{ include "osd1.tokenSecret" . }}.
+
+  curl -sS -H "Authorization: Bearer <token>" -H "content-type: application/json" \
+    -d '{"sql":"SELECT 1 AS n"}' \
+    http://{{ include "osd1.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/accounts/a/d1/database/b/query
+
+{{- if .Values.raft.enabled }}
+
+Raft voters: {{ .Values.raft.voters }}. Pod {{ include "osd1.fullname" . }}-0 bootstraps. The other pods join it. Pods past the voter count join as learners. Each pod keeps its own file on its own volume. Do not scale below {{ .Values.raft.voters }} replicas. This chart does not run OSD1_RAFT_REMOVE.
+{{- else }}
+
+Simple mode is one replica. A second replica would be a second empty database, not a copy.
+{{- end }}
+{{- if not .Values.litestream.enabled }}
+
+Litestream is off. The volume survives a pod restart. It does not survive a deleted volume. Set litestream.enabled to copy the file to S3.
+{{- end }}

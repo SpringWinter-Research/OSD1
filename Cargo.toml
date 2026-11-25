@@ -37,3 +37,5 @@ openraft = { version = "0.9", features = ["serde", "single-term-leader"] }
 [profile.release]
 lto = "thin"
 codegen-units = 1
+# Symbols are not used at runtime. Stripping them shrinks the shipped binary.
+strip = "symbols"

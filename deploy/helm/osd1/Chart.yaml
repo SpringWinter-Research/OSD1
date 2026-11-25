@@ -1,0 +1,7 @@
+apiVersion: v2
+name: osd1
+description: One SQLite database file behind the OSD1 HTTP API.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.23.0-0"

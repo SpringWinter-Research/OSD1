@@ -49,7 +49,7 @@ Use the address OSD1 listens on. The image listens on port 8080 inside the conta
 | `osd1_raft_peers` | | Raft only. Voters and learners in the current config. This count includes this node |
 | `osd1_litestream_last_ok_seconds` | | Present when `OSD1_LITESTREAM_HEARTBEAT` is set. Unix time of the heartbeat file, or 0 when the file is absent |
 
-`/health` stays HTTP 200 while the process is up. In raft mode, `ready` is false when `osd1_raft_apply_lag` is above 32. A process health check that only checks the status code leaves that node running. The image health check is `wget` of `/health`. Read `ready`, or alert on the gauge. Simple mode reports `ready` true and does not export the raft gauges. A node that is leaving returns HTTP 503 and `{"ok":false,"ready":false}`. New SQL on that node is rejected and is not queued.
+`/health` stays HTTP 200 while the process is up. In raft mode, `ready` is false when `osd1_raft_apply_lag` is above 32. A process health check that only checks the status code leaves that node running. The image health check runs `osd1 health`, which reads `/health`. Read `ready`, or alert on the gauge. Simple mode reports `ready` true and does not export the raft gauges. A node that is leaving returns HTTP 503 and `{"ok":false,"ready":false}`. New SQL on that node is rejected and is not queued.
 
 `deploy/prometheus-alerts.yml` defines `Osd1ReplicaStale`. It fires when `osd1_litestream_last_ok_seconds` is above 0 and more than 60 seconds behind wall time, for 1 minute. A 0 gauge means the sidecar has not confirmed a generation yet. The alert stays quiet.
 

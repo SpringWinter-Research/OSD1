@@ -1,0 +1,25 @@
+{{- if .Values.litestream.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "osd1.fullname" . }}-litestream
+  labels:
+    {{- include "osd1.labels" . | nindent 4 }}
+data:
+  litestream.yml: |
+    dbs:
+      - path: /data/osd1.db
+        replica:
+          type: s3
+          bucket: {{ .Values.litestream.bucket | quote }}
+          path: {{ .Values.litestream.path | quote }}
+          region: {{ .Values.litestream.region | quote }}
+          {{- if .Values.litestream.endpoint }}
+          endpoint: {{ .Values.litestream.endpoint | quote }}
+          {{- end }}
+          force-path-style: {{ .Values.litestream.forcePathStyle }}
+          access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+          secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+  litestream-leader.sh: |
+{{ .Files.Get "files/litestream-leader.sh" | indent 4 }}
+{{- end }}

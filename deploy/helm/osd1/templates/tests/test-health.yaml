@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "osd1.fullname" . }}-test
+  labels:
+    {{- include "osd1.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  containers:
+    - name: health
+      image: busybox:1.36
+      command: ["wget", "-qO-", "http://{{ include "osd1.fullname" . }}:{{ .Values.service.port }}/health"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        runAsNonRoot: true
+        runAsUser: 65534
+        readOnlyRootFilesystem: true

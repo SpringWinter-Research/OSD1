@@ -243,7 +243,18 @@ pub async fn start_node(config: NodeConfig) -> Result<RunningNode, std::io::Erro
     let raft_addr = raft_listener.local_addr()?;
     let http_listener = tokio::net::TcpListener::bind(config.http_addr).await?;
     let http_addr = http_listener.local_addr()?;
-    let advertise = format!("{raft_addr}|{http_addr}");
+    // Peers dial the advertised name. A bind on 0.0.0.0 is not that name.
+    let raft_public = choose_advertise(
+        &raft_addr.to_string(),
+        env_nonempty("OSD1_RAFT_ADVERTISE").as_deref(),
+        "OSD1_RAFT_ADVERTISE",
+    )?;
+    let http_public = choose_advertise(
+        &http_addr.to_string(),
+        env_nonempty("OSD1_HTTP_ADVERTISE").as_deref(),
+        "OSD1_HTTP_ADVERTISE",
+    )?;
+    let advertise = format!("{raft_public}|{http_public}");
 
     store.set_apply_hook(apply_hook(Arc::clone(&worker)));
     store.set_body_horizon_hook(body_horizon_hook(Arc::clone(&worker)));
@@ -330,7 +341,7 @@ pub async fn start_node(config: NodeConfig) -> Result<RunningNode, std::io::Erro
         worker,
         raft_node.clone(),
         Arc::from(config.secret.as_str()),
-        raft_addr.to_string(),
+        raft_public.clone(),
         command_ids,
         config.request_timeout,
     ));
@@ -407,7 +418,7 @@ pub async fn start_node(config: NodeConfig) -> Result<RunningNode, std::io::Erro
             &http_addr,
             &config.db_path.display().to_string(),
             config.node_id,
-            &raft_addr,
+            &raft_public,
             config.api_token.as_deref(),
         )
     );
@@ -618,24 +629,71 @@ fn raft_configured() -> bool {
         || env_nonempty("OSD1_RAFT_BOOTSTRAP").is_some()
         || env_nonempty("OSD1_RAFT_VOTER").is_some()
         || env_nonempty("OSD1_RAFT_REMOVE").is_some()
+        || env_nonempty("OSD1_RAFT_ADVERTISE").is_some()
+        || env_nonempty("OSD1_HTTP_ADVERTISE").is_some()
+        || env_nonempty("OSD1_NODE_ID_FROM_HOSTNAME").is_some()
+        || env_nonempty("OSD1_RAFT_VOTERS").is_some()
 }
 
 fn node_config_from_env() -> Result<NodeConfig, std::io::Error> {
-    let node_id = env_nonempty("OSD1_NODE_ID")
-        .ok_or_else(|| boot("OSD1_NODE_ID is required in raft mode"))?
-        .parse::<u64>()
-        .map_err(|_| boot("OSD1_NODE_ID is not a u64"))?;
+    let from_hostname = flag_on("OSD1_NODE_ID_FROM_HOSTNAME");
+    if from_hostname && env_nonempty("OSD1_NODE_ID").is_some() {
+        return Err(boot(
+            "set OSD1_NODE_ID or OSD1_NODE_ID_FROM_HOSTNAME, not both",
+        ));
+    }
+    let ordinal = if from_hostname {
+        let host = env_nonempty("HOSTNAME")
+            .ok_or_else(|| boot("HOSTNAME is required when OSD1_NODE_ID_FROM_HOSTNAME is set"))?;
+        Some(ordinal_from_hostname(&host)?)
+    } else {
+        None
+    };
+    let node_id = if let Some(ordinal) = ordinal {
+        let base = env_u64("OSD1_NODE_ID_BASE", 1);
+        ordinal
+            .checked_add(base)
+            .ok_or_else(|| boot("OSD1_NODE_ID_BASE overflows"))?
+    } else {
+        env_nonempty("OSD1_NODE_ID")
+            .ok_or_else(|| boot("OSD1_NODE_ID is required in raft mode"))?
+            .parse::<u64>()
+            .map_err(|_| boot("OSD1_NODE_ID is not a u64"))?
+    };
     let raft_addr = env_nonempty("OSD1_RAFT_LISTEN")
         .ok_or_else(|| boot("OSD1_RAFT_LISTEN is required in raft mode"))?
         .parse::<SocketAddr>()
         .map_err(|_| boot("OSD1_RAFT_LISTEN is not host:port"))?;
     let secret = env_nonempty("OSD1_RAFT_SECRET")
         .ok_or_else(|| boot("OSD1_RAFT_SECRET is required in raft mode"))?;
-    let bootstrap = matches!(
+    let mut bootstrap = matches!(
         env::var("OSD1_RAFT_BOOTSTRAP").ok().as_deref(),
         Some("1") | Some("true")
     );
-    let join = env_nonempty("OSD1_RAFT_JOIN");
+    let mut join = env_nonempty("OSD1_RAFT_JOIN");
+    let mut voter = matches!(
+        env::var("OSD1_RAFT_VOTER").ok().as_deref(),
+        Some("1") | Some("true")
+    );
+    if let Some(ordinal) = ordinal {
+        let voters = match env_nonempty("OSD1_RAFT_VOTERS") {
+            Some(value) => {
+                let voters = value
+                    .parse::<u64>()
+                    .map_err(|_| boot("OSD1_RAFT_VOTERS is not a u64"))?;
+                if voters == 0 {
+                    return Err(boot("OSD1_RAFT_VOTERS must be 1 or more"));
+                }
+                Some(voters)
+            }
+            None => None,
+        };
+        (bootstrap, join, voter) = membership_for_ordinal(ordinal, voters, bootstrap, join, voter);
+    } else if env_nonempty("OSD1_RAFT_VOTERS").is_some() {
+        return Err(boot(
+            "OSD1_RAFT_VOTERS requires OSD1_NODE_ID_FROM_HOSTNAME=1",
+        ));
+    }
     if bootstrap && join.is_some() {
         return Err(boot(
             "set OSD1_RAFT_BOOTSTRAP=1 or OSD1_RAFT_JOIN, not both",
@@ -658,10 +716,7 @@ fn node_config_from_env() -> Result<NodeConfig, std::io::Error> {
     config.raft_addr = raft_addr;
     config.bootstrap = bootstrap;
     config.join = join;
-    config.voter = matches!(
-        env::var("OSD1_RAFT_VOTER").ok().as_deref(),
-        Some("1") | Some("true")
-    );
+    config.voter = voter;
     config.api_token = api_token;
     config.colo = env::var("OSD1_SERVED_BY_COLO").unwrap_or_else(|_| "LOC".to_string());
     config.capacity = env::var("OSD1_QUEUE_CAPACITY")
@@ -707,13 +762,62 @@ fn startup_line_raft(
     addr: &SocketAddr,
     db_path: &str,
     node_id: u64,
-    raft_addr: &SocketAddr,
+    raft_addr: &str,
     token: Option<&str>,
 ) -> String {
     redact(
         &format!("osd1 listening on {addr} database {db_path} raft node {node_id} at {raft_addr}"),
         token,
     )
+}
+
+fn flag_on(name: &str) -> bool {
+    matches!(env::var(name).ok().as_deref(), Some("1") | Some("true"))
+}
+
+/// Trailing `-<ordinal>` of a StatefulSet pod name. `osd1-0` is ordinal 0.
+fn ordinal_from_hostname(host: &str) -> Result<u64, std::io::Error> {
+    let Some((_, suffix)) = host.rsplit_once('-') else {
+        return Err(boot("HOSTNAME must end in -<ordinal>"));
+    };
+    suffix
+        .parse::<u64>()
+        .map_err(|_| boot("HOSTNAME must end in -<ordinal>"))
+}
+
+/// Ordinal 0 keeps bootstrap and drops join. Later ordinals drop bootstrap.
+/// `voters` makes ordinals below that count voters and the rest learners.
+fn membership_for_ordinal(
+    ordinal: u64,
+    voters: Option<u64>,
+    mut bootstrap: bool,
+    mut join: Option<String>,
+    mut voter: bool,
+) -> (bool, Option<String>, bool) {
+    if ordinal == 0 {
+        join = None;
+    } else {
+        bootstrap = false;
+    }
+    if let Some(voters) = voters {
+        voter = ordinal < voters;
+    }
+    (bootstrap, join, voter)
+}
+
+/// Address peers dial. `advertised` replaces the bound socket when that socket is not reachable.
+fn choose_advertise(
+    bound: &str,
+    advertised: Option<&str>,
+    name: &str,
+) -> Result<String, std::io::Error> {
+    let Some(advertised) = advertised.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(bound.to_string());
+    };
+    if advertised.contains(|ch: char| ch.is_whitespace()) || !advertised.contains(':') {
+        return Err(boot(format!("{name} is not host:port")));
+    }
+    Ok(advertised.to_string())
 }
 
 fn redact(text: &str, secret: Option<&str>) -> String {
@@ -737,5 +841,48 @@ mod tests {
         assert!(!line.contains("topsecret-token"));
         assert!(line.contains("[redacted]"));
         assert!(line.contains("osd1 listening"));
+    }
+
+    #[test]
+    fn hostname_ordinal_reads_the_statefulset_suffix() {
+        assert_eq!(ordinal_from_hostname("osd1-0").unwrap(), 0);
+        assert_eq!(ordinal_from_hostname("prod-osd1-2").unwrap(), 2);
+        assert!(ordinal_from_hostname("osd1").is_err());
+        assert!(ordinal_from_hostname("osd1-").is_err());
+    }
+
+    #[test]
+    fn hostname_mode_bootstraps_only_the_first_pod() {
+        let peer = Some("osd1-0.osd1-raft.svc:7000".to_string());
+        let (bootstrap, join, voter) = membership_for_ordinal(0, Some(3), true, peer.clone(), true);
+        assert!(bootstrap);
+        assert!(join.is_none());
+        assert!(voter);
+
+        let (bootstrap, join, voter) = membership_for_ordinal(1, Some(3), true, peer.clone(), true);
+        assert!(!bootstrap);
+        assert_eq!(join.as_deref(), Some("osd1-0.osd1-raft.svc:7000"));
+        assert!(voter);
+
+        let (_, _, voter) = membership_for_ordinal(3, Some(3), true, peer, true);
+        assert!(!voter);
+    }
+
+    #[test]
+    fn advertise_override_replaces_the_bind_address() {
+        assert_eq!(
+            choose_advertise("0.0.0.0:7000", None, "OSD1_RAFT_ADVERTISE").unwrap(),
+            "0.0.0.0:7000"
+        );
+        assert_eq!(
+            choose_advertise(
+                "0.0.0.0:7000",
+                Some("osd1-0.osd1-raft.svc:7000"),
+                "OSD1_RAFT_ADVERTISE"
+            )
+            .unwrap(),
+            "osd1-0.osd1-raft.svc:7000"
+        );
+        assert!(choose_advertise("0.0.0.0:7000", Some("no-port"), "OSD1_RAFT_ADVERTISE").is_err());
     }
 }

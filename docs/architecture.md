@@ -30,7 +30,7 @@ Parameters use the SQLite bind API. The response envelope follows the installed 
 
 ## Distribution layer
 
-Set `OSD1_NODE_ID`, `OSD1_RAFT_LISTEN`, and `OSD1_RAFT_SECRET` to leave simple mode. One process sets `OSD1_RAFT_BOOTSTRAP=1`. A join is a learner unless you set `OSD1_RAFT_VOTER=1`. The cluster has three voters. A running process stays in the mode it started in. Startup commands are on the [operations](operations.md) page.
+Set `OSD1_NODE_ID`, `OSD1_RAFT_LISTEN`, and `OSD1_RAFT_SECRET` to leave simple mode. One process sets `OSD1_RAFT_BOOTSTRAP=1`. A join is a learner unless you set `OSD1_RAFT_VOTER=1`. The cluster has three voters. A running process stays in the mode it started in. `OSD1_RAFT_ADVERTISE` is the host:port other nodes dial when the process binds `0.0.0.0`. The chart uses the pod DNS name. Startup commands are on the [operations](operations.md) page.
 
 Quorum is a majority of the voters. Two voters commit when both have stored the entry. Three voters commit at two. Learners replicate and serve local reads. They do not vote.
 

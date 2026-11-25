@@ -1,11 +1,11 @@
 ---
 title: Security scan
-description: Recorded cargo-audit and Trivy results for the OSD1 image.
+description: Recorded cargo-audit and Trivy results. The Trivy rows are the Debian 12.15 image.
 ---
 
 # Security scan
 
-`./scripts/scan.sh` records dependency advisories and image advisories. A finding does not fail the script. A scanner that does not run does fail the script. This page quotes the recorded run. The image is not clean.
+`./scripts/scan.sh` records dependency advisories and image advisories. A finding does not fail the script. A scanner that does not run does fail the script. This page quotes the recorded run against the Debian 12.15 image `osd1-osd1:latest`. It does not quote a scan of the distroless `latest` or `2026-11-26` image. That recorded image is not clean.
 
 ## Cargo dependencies
 
@@ -38,6 +38,6 @@ zlib1g  CVE-2023-45853  CRITICAL  will_not_fix  1:1.2.13.dfsg-1
 zlib: integer overflow and resultant heap-based buffer overflow in zipOpenNewFileInZip4_64
 ```
 
-The other 224 rows are Debian 12.15 packages in the runtime image. They include util-linux, wget, ncurses, systemd, perl, gzip, and acl at high severity. Run `./scripts/scan.sh` again to print the full table.
+The other 224 rows are Debian 12.15 packages in that recorded image. They include util-linux, wget, ncurses, systemd, perl, gzip, and acl at high severity. Run `./scripts/scan.sh` again to print the full table.
 
 Access rules for the token, the raft secret, and `/metrics` are on the [system design](system-design.md) page.

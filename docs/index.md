@@ -70,7 +70,7 @@ docker run --rm -p 8080:8080 \
   public.ecr.aws/c5l0h3s1/osd1:latest
 ```
 
-The tags `latest` and `2026-11-06` include `linux/arm64` and `linux/amd64`. The database file is `/data/osd1.db`. To build from the repo, run `docker compose -f deploy/compose.yml up -d --build`.
+The tags `latest` and `2026-11-26` include `linux/arm64` and `linux/amd64`. The database file is `/data/osd1.db`. To build from the repo, run `docker compose -f deploy/compose.yml up -d --build`. The Helm chart is `deploy/helm/osd1`. Install steps are on the [operations](operations.md) page.
 
 **2. Check that the server is up**
 

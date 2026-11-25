@@ -5,7 +5,7 @@ description: How to start OSD1, set the environment, and start a raft cluster.
 
 # Operations
 
-The image listens on `0.0.0.0:8080`. The only database file is `/data/osd1.db`. The image runs as user id 10001. Compose mounts a named volume at `/data` and sets `OSD1_API_TOKEN`. The default token is `dev-token` when the variable is unset.
+The image listens on `0.0.0.0:8080`. The only database file is `/data/osd1.db`. The published runtime is distroless. It contains libc, libm, and libgcc. The image runs as user id 10001. The image health check runs `osd1 health`. Compose mounts a named volume at `/data` and sets `OSD1_API_TOKEN`. The default token is `dev-token` when the variable is unset.
 
 ```bash
 docker compose -f deploy/compose.yml build
@@ -75,10 +75,14 @@ The process stops on SIGINT and on SIGTERM.
 | `OSD1_ROUTES` | unset | File of `database_id http://host:port` lines. Blank lines and `#` comments are skipped |
 | `OSD1_DATABASE_ID` | unset | Path id this process serves from its own file |
 | `OSD1_LITESTREAM_HEARTBEAT` | unset | File the sidecar touches. `/metrics` then exports `osd1_litestream_last_ok_seconds` |
+| `OSD1_RAFT_ADVERTISE` | unset | `host:port` stored for this node. Peers dial it. The process still binds `OSD1_RAFT_LISTEN` |
+| `OSD1_HTTP_ADVERTISE` | unset | `host:port` stored after `\|` in that same membership string |
+| `OSD1_NODE_ID_FROM_HOSTNAME` | unset | `1` or `true` sets the node id from the trailing `-<ordinal>` of `HOSTNAME`, plus `OSD1_NODE_ID_BASE` (default 1). Do not also set `OSD1_NODE_ID`. Ordinal 0 keeps `OSD1_RAFT_BOOTSTRAP` and drops `OSD1_RAFT_JOIN`. Any other ordinal drops bootstrap and keeps join |
+| `OSD1_RAFT_VOTERS` | unset | Requires `OSD1_NODE_ID_FROM_HOSTNAME`. Ordinals below this count join as voters. The rest join as learners. `0` is rejected |
 
 A directory that OSD1 creates is mode `0700`. The database, the WAL, the shared-memory file, and the raft files are mode `0600`. The API token is redacted from the startup log.
 
-Do not set `OSD1_RAFT_BOOTSTRAP` and `OSD1_RAFT_JOIN` together. The process exits with `set OSD1_RAFT_BOOTSTRAP=1 or OSD1_RAFT_JOIN, not both`. A new node with neither value, and with no raft state, exits with `set OSD1_RAFT_BOOTSTRAP=1 or OSD1_RAFT_JOIN`.
+Do not set `OSD1_RAFT_BOOTSTRAP` and `OSD1_RAFT_JOIN` together. The process exits with `set OSD1_RAFT_BOOTSTRAP=1 or OSD1_RAFT_JOIN, not both`. A new node with neither value, and with no raft state, exits with `set OSD1_RAFT_BOOTSTRAP=1 or OSD1_RAFT_JOIN`. `OSD1_NODE_ID_FROM_HOSTNAME=1` is the exception: the process drops join on ordinal 0 and drops bootstrap on every later ordinal before that check.
 
 ## Raft mode
 
@@ -116,7 +120,7 @@ On a new bootstrap or a new join, OSD1 waits up to 5 seconds for a follower, lea
 
 Clients call `/query`, `/raw`, and `/mcp` on any node that owns the database. The router process does not execute `/mcp` tools. Quorum, local reads, and removal behavior are on the [architecture](architecture.md) page.
 
-Restart a process with the same node id, the same `OSD1_RAFT_LISTEN`, and the same `OSD1_DB_PATH`. An existing raft directory skips bootstrap and join. Bind every voter again before you expect a new write. One voter cannot form a majority. The process stays up until the other voters return.
+Restart a process with the same node id, the same `OSD1_DB_PATH`, and the same raft address other nodes dial. That address is `OSD1_RAFT_ADVERTISE` when it is set, and otherwise the bound `OSD1_RAFT_LISTEN`. An existing raft directory skips bootstrap and join. Bind every voter again before you expect a new write. One voter cannot form a majority. The process stays up until the other voters return.
 
 To drop node 4:
 
@@ -130,6 +134,28 @@ cargo run -p osd1-server
 The caller exits after the call. The removed node returns HTTP 503, finishes accepted SQL for up to 5 seconds, and exits. A later start of that database exits 0. The log line says the node was removed from the raft cluster. Remove a member only while a majority of the voters is up.
 
 `deploy/compose.leader-backup.yml` is an optional third file. It runs Litestream only while this process is the raft leader. Restore steps are on the [backup and restore](backup-restore.md) page.
+
+## Kubernetes
+
+The chart is `deploy/helm/osd1`. Simple mode is one pod and one volume. Raft mode is one pod per replica. Each pod has its own volume and its own database file. The client Service sends `/query`, `/raw`, and `/mcp` to any ready pod.
+
+```bash
+helm install osd1 deploy/helm/osd1 --set auth.token=dev-token
+```
+
+```bash
+helm install osd1 deploy/helm/osd1 \
+  --set auth.token=dev-token \
+  --set raft.enabled=true \
+  --set raft.secret=raft-secret \
+  --set replicaCount=3
+```
+
+Pod 0 bootstraps. The other pods join `osd1-0` through the headless Service. The process listens on `0.0.0.0` and advertises `<pod>.<release>-raft.<namespace>.svc.cluster.local`. A new pod IP does not change that name. Three voters is the default. Further replicas join as learners. Do not scale below the voter count. The chart does not call `OSD1_RAFT_REMOVE`. The image tagged `2026-11-26` does not read `OSD1_RAFT_ADVERTISE` yet. Build the image from this tree before setting `raft.enabled`. Simple mode does not need that build.
+
+`/health` is the startup, readiness, and liveness probe. HTTP 200 means the process is up. In raft mode, `ready` can be false while the status stays 200. A node that is leaving returns 503.
+
+Litestream is off until you set `litestream.enabled` and the S3 bucket. In raft mode the sidecar runs on every pod and replicates only while that pod's `osd1_raft_role` is 1. Value names are in `deploy/helm/osd1/README.md`. Restore steps stay on the [backup and restore](backup-restore.md) page.
 
 ## Router
 

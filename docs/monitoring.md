@@ -29,7 +29,7 @@ Use the address OSD1 listens on. The image listens on port 8080 inside the conta
 
 | Name | Labels | Meaning |
 | --- | --- | --- |
-| `osd1_http_requests_total` | `route`, `status` | HTTP responses. `route` is `health`, `metrics`, `query`, `raw`, `explorer`, or `other`. `/` and `/explorer` use `explorer`. `status` is `200`, `400`, `401`, `413`, `429`, `500`, `503`, `504`, or `other` |
+| `osd1_http_requests_total` | `route`, `status` | HTTP responses. `route` is `health`, `metrics`, `query`, `raw`, `explorer`, `mcp`, or `other`. `/` and `/explorer` use `explorer`. SQL from `/mcp` uses the SQL route `query`. `status` is `200`, `400`, `401`, `413`, `429`, `500`, `503`, `504`, or `other` |
 | `osd1_http_request_duration_seconds` | `route` | Time in the handler. This includes queue wait and JSON encoding |
 | `osd1_sql_requests_total` | `result`, `route` | Requests that reached the queue. `result` is `ok`, `sql_error`, `queue_full`, `timeout`, `shut_down`, or `response_too_large`. `route` is `query` or `raw` |
 | `osd1_sql_duration_seconds` | `route` | Time on the SQL thread. Queue wait is not included. Recorded when the result is `ok` or `response_too_large` |
@@ -101,4 +101,4 @@ osd1_database_size_bytes
 
 ## What a scrape can see
 
-Anyone who can open `GET /metrics` can see those rates, those latencies, the queue, the row counts, and the main file size. Keep the listen address on a network that should have that view. `/query` and `/raw` still require the bearer token when `OSD1_API_TOKEN` is set.
+Anyone who can open `GET /metrics` can see those rates, those latencies, the queue, the row counts, and the main file size. Keep the listen address on a network that should have that view. `/query`, `/raw`, and `/mcp` still require the bearer token when `OSD1_API_TOKEN` is set.

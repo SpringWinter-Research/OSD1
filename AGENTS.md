@@ -11,13 +11,13 @@ OSD1 is one SQLite database behind an HTTP API that the Cloudflare TypeScript SD
 - SQL is native SQLite. Parameters are bound with the SQLite bind API.
 - Authorization uses the SQLite authorizer callback. Do not accept or reject statements by scanning SQL text.
 - Client `BEGIN`, `COMMIT`, `ROLLBACK`, and `SAVEPOINT` are denied. A simple-mode request, a leader read, and a raft apply are one transaction each. A follower local read does not open a transaction. The connection is in autocommit before the next request.
-- The HTTP surface is `POST /accounts/:account_id/d1/database/:database_id/query`, the matching `/raw` route, `GET /health`, `GET /metrics`, and `GET /` plus `GET /explorer`. Those two pages are the table explorer. They are unauthenticated HTML and do not enqueue SQL. The page sends the bearer token only on `/raw`.
-- `GET /metrics` is Prometheus text exposition. It is unauthenticated, like `/health` and the explorer page. Metric labels are a fixed set: no SQL text, account ids, or database ids. `/` and `/explorer` use the route label `explorer`.
+- The HTTP surface is `POST /accounts/:account_id/d1/database/:database_id/query`, the matching `/raw` route, `POST /mcp`, `GET /health`, `GET /metrics`, and `GET /` plus `GET /explorer`. Those two pages are the table explorer. They are unauthenticated HTML and do not enqueue SQL. The page sends the bearer token only on `/raw`. `POST /mcp` is the Model Context Protocol endpoint. It uses the same bearer token and the same SQL queue. Tools build `CREATE`, `ALTER`, `DROP`, and the reads for the table list and one table's columns, or they pass SQL through. The router process does not execute SQL on `/mcp`.
+- `GET /metrics` is Prometheus text exposition. It is unauthenticated, like `/health` and the explorer page. Metric labels are a fixed set: no SQL text, account ids, or database ids. `/` and `/explorer` use the route label `explorer`. `/mcp` uses the route label `mcp`. SQL from `/mcp` uses the route label `query`.
 - The request and response shapes follow the installed `cloudflare` npm package. If that SDK rejects a response, change the server and re-run the SDK tests.
 - Do not change SQLite’s on-disk format. Use bundled upstream SQLite.
 - Litestream runs as a later-phase sidecar. It is not linked into the server binary.
 - No connection pool. One process owns one database file. Scale by running one process per database.
-- `OSD1_ROUTER=1` with `OSD1_ROUTES` (lines of `database_id http://host:port`) proxies `/query` and `/raw`. The router process does not open SQLite. `OSD1_DATABASE_ID` pins a process to one path id. With both unset, path ids are ignored.
+- `OSD1_ROUTER=1` with `OSD1_ROUTES` (lines of `database_id http://host:port`) proxies `/query` and `/raw`. The router process does not open SQLite and does not execute `/mcp` tools. `OSD1_DATABASE_ID` pins a process to one path id. With both unset, path ids are ignored.
 - Simple mode, the default, has no clustering and never opens a Raft log.
 - The process shuts down on SIGINT and SIGTERM.
 

@@ -41,7 +41,7 @@ curl -sS -H "Authorization: Bearer dev-token" -H "content-type: application/json
   http://127.0.0.1:8080/accounts/a/d1/database/b/query
 ```
 
-`/query` returns one JSON object for each row. `/raw` returns column names and array rows. Health does not use the token.
+`/query` returns one JSON object for each row. `/raw` returns column names and array rows. `POST /mcp` runs the same SQL for a Model Context Protocol client. Health does not use the token.
 
 From source:
 

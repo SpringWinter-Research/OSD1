@@ -45,7 +45,7 @@ OSD1 runs that file on one thread. One HTTP request is one transaction. A full q
 <div class="docs-audiences">
   <div>
     <p class="docs-kicker">Develop</p>
-    <p>Call <code>/query</code> and <code>/raw</code>. Start with the <a href="api-examples.html">API examples</a> and the <a href="compatibility.html">SDK differences</a>.</p>
+    <p>Call <code>/query</code>, <code>/raw</code>, and <code>/mcp</code>. Start with the <a href="api-examples.html">API examples</a> and the <a href="compatibility.html">SDK differences</a>.</p>
   </div>
   <div>
     <p class="docs-kicker">Operate</p>
@@ -108,7 +108,7 @@ cargo run -p osd1-server
 - Native SQL. Parameters use the SQLite bind API.
 - One transaction for each HTTP request in simple mode, on a leader read, and on a raft apply.
 - A fixed-size queue. Extra requests get HTTP 429.
-- Bearer-token authentication on `/query` and `/raw`.
+- Bearer-token authentication on `/query`, `/raw`, and `/mcp`.
 - A table explorer at `/` and `/explorer`.
 - `GET /metrics` in Prometheus text format.
 - Optional raft mode. Followers serve local reads and forward writes to the leader.
@@ -152,6 +152,7 @@ The highest recorded rate in simple mode is 111,075 `SELECT 1` requests each sec
 - [Monitoring](monitoring.md)
 - [Backup and restore](backup-restore.md)
 - [Benchmark](benchmark.md)
+- [Benchmark plans](benchmark-plans.md)
 - [Testing](testing.md)
 - [Security scan](security-scan.md)
 

@@ -571,6 +571,200 @@ fn free_port() -> u16 {
     listener.local_addr().unwrap().port()
 }
 
+#[tokio::test]
+async fn fts5_match_returns_the_row_text() {
+    let server = Running::start(4).await;
+    server
+        .ok("CREATE VIRTUAL TABLE docs USING fts5(body)", None)
+        .await;
+    server
+        .ok(
+            "INSERT INTO docs(rowid, body) VALUES (?, ?)",
+            Some(json!([1, "red apple"])),
+        )
+        .await;
+    server
+        .ok(
+            "INSERT INTO docs(rowid, body) VALUES (?, ?)",
+            Some(json!([2, "green leaf"])),
+        )
+        .await;
+    let found = server
+        .ok(
+            "SELECT rowid, body FROM docs WHERE docs MATCH ?",
+            Some(json!(["apple"])),
+        )
+        .await;
+    assert_eq!(
+        found["result"][0]["results"],
+        json!([{"rowid": 1, "body": "red apple"}])
+    );
+}
+
+#[tokio::test]
+async fn json_vector_scan_returns_distance_and_text() {
+    let server = Running::start(4).await;
+    server
+        .ok(
+            "CREATE TABLE notes (
+                id INTEGER PRIMARY KEY,
+                body TEXT NOT NULL,
+                embedding TEXT NOT NULL
+            )",
+            None,
+        )
+        .await;
+    server
+        .ok(
+            "INSERT INTO notes (id, body, embedding) VALUES (?, ?, ?)",
+            Some(json!([1, "red apple", "[1,0,0]"])),
+        )
+        .await;
+    server
+        .ok(
+            "INSERT INTO notes (id, body, embedding) VALUES (?, ?, ?)",
+            Some(json!([2, "green leaf", "[0,1,0]"])),
+        )
+        .await;
+    let found = server
+        .ok(
+            "SELECT body, (
+                SELECT sum((a.value - b.value) * (a.value - b.value))
+                FROM json_each(notes.embedding) AS a
+                JOIN json_each(?) AS b ON a.key = b.key
+             ) AS distance
+             FROM notes
+             ORDER BY distance, id",
+            Some(json!(["[1,0,0]"])),
+        )
+        .await;
+    let results = &found["result"][0]["results"];
+    assert_eq!(results[0]["body"], json!("red apple"));
+    assert_eq!(results[1]["body"], json!("green leaf"));
+    assert!(
+        results[0]["distance"].as_i64() == Some(0) || results[0]["distance"].as_f64() == Some(0.0),
+        "{found}"
+    );
+    assert!(
+        results[1]["distance"].as_i64() == Some(2) || results[1]["distance"].as_f64() == Some(2.0),
+        "{found}"
+    );
+}
+
+#[tokio::test]
+async fn vec0_match_returns_row_id_distance_and_text() {
+    let server = Running::start(4).await;
+    server
+        .ok(
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
+            None,
+        )
+        .await;
+    server
+        .ok(
+            "CREATE VIRTUAL TABLE notes_vec USING vec0(embedding float[3])",
+            None,
+        )
+        .await;
+    server
+        .ok("INSERT INTO notes (id, body) VALUES (1, 'red apple')", None)
+        .await;
+    server
+        .ok(
+            "INSERT INTO notes_vec (rowid, embedding) VALUES (1, '[1,0,0]')",
+            None,
+        )
+        .await;
+    server
+        .ok(
+            "INSERT INTO notes (id, body) VALUES (2, 'green leaf')",
+            None,
+        )
+        .await;
+    server
+        .ok(
+            "INSERT INTO notes_vec (rowid, embedding) VALUES (2, '[0,1,0]')",
+            None,
+        )
+        .await;
+    let found = server
+        .ok(
+            "SELECT notes.id, notes.body, notes_vec.distance
+             FROM notes_vec
+             JOIN notes ON notes.id = notes_vec.rowid
+             WHERE notes_vec.embedding MATCH ?
+               AND k = 2
+             ORDER BY notes_vec.distance",
+            Some(json!(["[1,0,0]"])),
+        )
+        .await;
+    let results = &found["result"][0]["results"];
+    assert_eq!(results[0]["id"], json!(1));
+    assert_eq!(results[0]["body"], json!("red apple"));
+    assert_eq!(results[1]["id"], json!(2));
+    assert_eq!(results[1]["body"], json!("green leaf"));
+    assert!(
+        results[0]["distance"].as_i64() == Some(0) || results[0]["distance"].as_f64() == Some(0.0),
+        "{found}"
+    );
+    assert_ne!(results[1]["distance"], results[0]["distance"], "{found}");
+    let (status, body) = server.post("SELECT embedding FROM notes_vec", None).await;
+    assert_eq!(status, 400, "{body}");
+    assert!(message(&body).contains("blob"), "{body}");
+}
+
+#[tokio::test]
+async fn create_alter_and_drop_table() {
+    let server = Running::start(4).await;
+    let created = server
+        .ok(
+            "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL, note TEXT)",
+            None,
+        )
+        .await;
+    assert_eq!(created["result"][0]["meta"]["changed_db"], json!(true));
+    server
+        .ok(
+            "INSERT INTO items (id, name, note) VALUES (1, 'ada', 'first')",
+            None,
+        )
+        .await;
+    server
+        .ok("ALTER TABLE items ADD COLUMN extra TEXT", None)
+        .await;
+    server
+        .ok("ALTER TABLE items RENAME COLUMN note TO body", None)
+        .await;
+    server.ok("ALTER TABLE items RENAME TO notes", None).await;
+    server.ok("ALTER TABLE notes DROP COLUMN extra", None).await;
+    let row = server.ok("SELECT id, name, body FROM notes", None).await;
+    assert_eq!(
+        row["result"][0]["results"],
+        json!([{"id": 1, "name": "ada", "body": "first"}])
+    );
+    server.ok("DROP TABLE notes", None).await;
+    let left = server
+        .ok("SELECT name FROM sqlite_master WHERE name = 'notes'", None)
+        .await;
+    assert_eq!(left["result"][0]["results"], json!([]));
+
+    let (status, body) = server.post("DROP TABLE osd1_applied", None).await;
+    assert_eq!(status, 400, "{body}");
+    assert!(message(&body).contains("osd1_applied"), "{body}");
+
+    server
+        .ok("CREATE VIRTUAL TABLE docs USING fts5(body)", None)
+        .await;
+    server.ok("DROP TABLE docs", None).await;
+    server
+        .ok(
+            "CREATE VIRTUAL TABLE vec_items USING vec0(embedding float[3])",
+            None,
+        )
+        .await;
+    server.ok("DROP TABLE vec_items", None).await;
+}
+
 fn wait_health(port: u16) {
     let addr = format!("127.0.0.1:{port}").parse().unwrap();
     let started = std::time::Instant::now();

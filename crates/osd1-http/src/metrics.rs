@@ -336,6 +336,8 @@ pub fn route_label(path: &str) -> &'static str {
         "query"
     } else if path.ends_with("/raw") {
         "raw"
+    } else if path == "/mcp" {
+        "mcp"
     } else {
         "other"
     }

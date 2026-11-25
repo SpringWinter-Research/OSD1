@@ -58,7 +58,7 @@ The process stops on SIGINT and on SIGTERM.
 | --- | --- | --- |
 | `OSD1_DB_PATH` | `./data/osd1.db` | Database file. The image uses `/data/osd1.db` |
 | `OSD1_HTTP_ADDR` | `127.0.0.1:8080` | Listen address. The image uses `0.0.0.0:8080` |
-| `OSD1_API_TOKEN` | empty | Bearer token. Empty disables auth on `/query` and `/raw` |
+| `OSD1_API_TOKEN` | empty | Bearer token. Empty disables auth on `/query`, `/raw`, and `/mcp` |
 | `OSD1_QUEUE_CAPACITY` | `64` | Requests allowed to wait |
 | `OSD1_MAX_BODY_BYTES` | 1 MiB | Largest request body |
 | `OSD1_MAX_RESPONSE_BYTES` | 1 MiB | Largest success JSON |
@@ -114,7 +114,7 @@ The bootstrap process is the first leader. A joined node is a learner unless you
 
 On a new bootstrap or a new join, OSD1 waits up to 5 seconds for a follower, leader, or learner role. A timeout fails startup. On a restart, that timeout does not fail startup. The process still opens HTTP.
 
-Clients call `/query` and `/raw` on any node. Quorum, local reads, and removal behavior are on the [architecture](architecture.md) page.
+Clients call `/query`, `/raw`, and `/mcp` on any node that owns the database. The router process does not execute `/mcp` tools. Quorum, local reads, and removal behavior are on the [architecture](architecture.md) page.
 
 Restart a process with the same node id, the same `OSD1_RAFT_LISTEN`, and the same `OSD1_DB_PATH`. An existing raft directory skips bootstrap and join. Bind every voter again before you expect a new write. One voter cannot form a majority. The process stays up until the other voters return.
 
@@ -133,7 +133,7 @@ The caller exits after the call. The removed node returns HTTP 503, finishes acc
 
 ## Router
 
-One database is one process. To front several databases, run `OSD1_ROUTER=1` with an `OSD1_ROUTES` file. The router does not open SQLite. Proxy limits are on the [architecture](architecture.md) page.
+One database is one process. To front several databases, run `OSD1_ROUTER=1` with an `OSD1_ROUTES` file. The router does not open SQLite. It does not execute `/mcp` tools. Proxy limits are on the [architecture](architecture.md) page.
 
 ## Metrics
 

@@ -17,13 +17,13 @@ Locks, the log record, and idempotent apply are on the [low-level design](low-le
 
 ## Client layer
 
-`POST /accounts/:account_id/d1/database/:database_id/query` and the matching `/raw` route are the only routes that execute SQL. They wait on a bounded queue. A full queue returns HTTP 429 and does not block. `GET /health`, `GET /metrics`, `GET /`, and `GET /explorer` skip the queue. The explorer pages are HTML and do not check the token. The page sends the bearer token only on `/raw`.
+`POST /accounts/:account_id/d1/database/:database_id/query`, the matching `/raw` route, and `POST /mcp` execute SQL. They wait on the same bounded queue. A full queue returns HTTP 429 and does not block. `GET /health`, `GET /metrics`, `GET /`, and `GET /explorer` skip the queue. The explorer pages are HTML and do not check the token. The page sends the bearer token only on `/raw`. `POST /mcp` uses the same token. The router process does not execute SQL on `/mcp`.
 
 The account id and the database id in the path are ignored unless you set `OSD1_DATABASE_ID` or `OSD1_ROUTES`. One process still has one database.
 
 <figure>
   <img src="assets/arch-process.svg" alt="Client to HTTP to a bounded FIFO queue to one SQL thread to one SQLite file. A full queue returns HTTP 429. Health, metrics, and the explorer skip the queue." width="720">
-  <figcaption>Figure 1. Simple mode. Query and raw are the only routes that execute SQL.</figcaption>
+  <figcaption>Figure 1. Simple mode. Query, raw, and MCP execute SQL on the same queue.</figcaption>
 </figure>
 
 Parameters use the SQLite bind API. The response envelope follows the installed `cloudflare` package. Status codes are on the [API examples](api-examples.md) page. SDK differences are on the [compatibility](compatibility.md) page.
@@ -70,6 +70,8 @@ See [Low-level design](low-level.md), [System design](system-design.md), [Monito
 ### The SQL thread
 
 `SqliteWorker` opens the only connection to the live database. Tokio tasks enqueue work. They never call SQLite on that file. The backup API opens a second connection, and that connection is to the destination path.
+
+OSD1 registers sqlite-vec 0.1.9 on this connection before the statements below. That call is not SQL. `load_extension` stays denied.
 
 Startup runs these statements, in order:
 
@@ -127,7 +129,7 @@ Stop every node before you restore a raft cluster. The steps are on the [backup 
 
 ### Several databases
 
-One database is one process. `OSD1_ROUTER=1` reads `OSD1_ROUTES` and proxies `/query` and `/raw`. The router does not open SQLite. It copies the `Authorization` header. It returns the upstream status and the JSON body. It does not copy the commit-index headers. The process that executes SQL reads and writes those headers.
+One database is one process. `OSD1_ROUTER=1` reads `OSD1_ROUTES` and proxies `/query` and `/raw`. The router does not open SQLite. It does not execute `/mcp` tools. It copies the `Authorization` header. It returns the upstream status and the JSON body. It does not copy the commit-index headers. The process that executes SQL reads and writes those headers.
 
 Each route line is `database_id http://host:port`. Blank lines and `#` comments are skipped. The upstream URL has no path. The router rejects a database id that contains `/`, `?`, a space, or a newline. It stops at `OSD1_MAX_RESPONSE_BYTES` of payload, or at that limit plus 64 KiB of socket bytes. The upstream request sets `Connection: close`.
 

@@ -726,6 +726,7 @@ impl Drop for InflightGuard<'_> {
 }
 
 fn prepare_connection(conn: &Connection) -> Result<(), rusqlite::Error> {
+    register_vector_module(conn)?;
     conn.execute_batch(
         "
         PRAGMA page_size=4096;
@@ -740,6 +741,25 @@ fn prepare_connection(conn: &Connection) -> Result<(), rusqlite::Error> {
         return Err(rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CORRUPT),
             Some(format!("quick_check: {status}")),
+        ));
+    }
+    Ok(())
+}
+
+/// `sqlite-vec` 0.1.9 publishes `sqlite3_vec_init` with an empty Rust signature.
+/// `sqlite-vec.h` defines the SQLite extension entry point. The crate builds
+/// that file with `SQLITE_CORE`, so a null API pointer uses this process's SQLite.
+fn register_vector_module(conn: &Connection) -> Result<(), rusqlite::Error> {
+    use rusqlite::auto_extension::RawAutoExtension;
+
+    let rc = unsafe {
+        let init: RawAutoExtension = std::mem::transmute(sqlite_vec::sqlite3_vec_init as *const ());
+        init(conn.handle(), std::ptr::null_mut(), std::ptr::null())
+    };
+    if rc != rusqlite::ffi::SQLITE_OK {
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rc),
+            Some("sqlite-vec init failed".to_string()),
         ));
     }
     Ok(())
@@ -859,7 +879,13 @@ fn deny_context(context: &AuthContext<'_>, internal: bool, deny_nondeterministic
     if !internal && touches_applied_table(&context.action) {
         return DENY_APPLIED;
     }
-    if let Some(database) = context.database_name.filter(|name| !name.is_empty()) {
+    // DROP COLUMN stores the column name in the database-name slot.
+    // The database name for ALTER TABLE is on the action.
+    let database = match &context.action {
+        AuthAction::AlterTable { .. } => None,
+        _ => context.database_name,
+    };
+    if let Some(database) = database.filter(|name| !name.is_empty()) {
         if !database.eq_ignore_ascii_case("main") && !database.eq_ignore_ascii_case("temp") {
             return DENY_OTHER_DB;
         }
@@ -2110,6 +2136,13 @@ mod tests {
             after.statements[0].rows,
             vec![vec![SqlValue::Integer(1), SqlValue::Integer(2)]]
         );
+        run(&worker, "ALTER TABLE t DROP COLUMN m", vec![]).unwrap();
+        let dropped = run(&worker, "SELECT * FROM t", vec![]).unwrap();
+        assert_eq!(
+            dropped.statements[0].columns.as_ref(),
+            ["n".to_string()].as_slice()
+        );
+        assert_eq!(dropped.statements[0].rows, vec![vec![SqlValue::Integer(1)]]);
     }
 
     #[test]
@@ -2375,6 +2408,64 @@ mod tests {
                 SqlValue::Text("name".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn describe_table_returns_definition_columns_and_indexes() {
+        let path = temp_db("describe");
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        run(
+            &worker,
+            "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
+            vec![],
+        )
+        .unwrap();
+        run(&worker, "CREATE INDEX items_name ON items (name)", vec![]).unwrap();
+        let response = run(
+            &worker,
+            "SELECT type, name, sql FROM sqlite_master WHERE name = ?1 AND type IN ('table', 'view');\nSELECT cid, name, type, \"notnull\", dflt_value, pk FROM pragma_table_info(?1) ORDER BY cid;\nSELECT name, \"unique\", origin, partial FROM pragma_index_list(?1) ORDER BY seq",
+            vec![SqlValue::Text("items".to_string())],
+        )
+        .unwrap();
+        assert_eq!(response.statements.len(), 3);
+        assert_eq!(
+            response.statements[0].rows[0][0],
+            SqlValue::Text("table".to_string())
+        );
+        assert_eq!(
+            response.statements[0].rows[0][1],
+            SqlValue::Text("items".to_string())
+        );
+        match &response.statements[0].rows[0][2] {
+            SqlValue::Text(sql) => assert!(sql.contains("name TEXT")),
+            other => panic!("create text {other:?}"),
+        }
+        assert_eq!(
+            response.statements[1].rows[0][1],
+            SqlValue::Text("id".to_string())
+        );
+        assert_eq!(response.statements[1].rows[0][5], SqlValue::Integer(1));
+        assert_eq!(
+            response.statements[1].rows[1][1],
+            SqlValue::Text("name".to_string())
+        );
+        assert_eq!(response.statements[1].rows[1][3], SqlValue::Integer(1));
+        assert_eq!(
+            response.statements[2].rows[0][0],
+            SqlValue::Text("items_name".to_string())
+        );
+        assert_eq!(response.statements[2].rows[0][1], SqlValue::Integer(0));
+
+        let missing = run(
+            &worker,
+            "SELECT type, name, sql FROM sqlite_master WHERE name = ?1 AND type IN ('table', 'view');\nSELECT cid, name, type, \"notnull\", dflt_value, pk FROM pragma_table_info(?1) ORDER BY cid;\nSELECT name, \"unique\", origin, partial FROM pragma_index_list(?1) ORDER BY seq",
+            vec![SqlValue::Text("absent".to_string())],
+        )
+        .unwrap();
+        assert!(missing
+            .statements
+            .iter()
+            .all(|statement| statement.rows.is_empty()));
     }
 
     #[test]
@@ -2802,5 +2893,173 @@ mod tests {
         assert_eq!(still.statements, unknown_stored.statements);
         let rows = run(&worker, "SELECT COUNT(*) AS c FROM t", vec![]).unwrap();
         assert_eq!(rows.statements[0].rows, vec![vec![SqlValue::Integer(2)]]);
+    }
+
+    #[test]
+    fn fts5_match_returns_the_row_text() {
+        let path = temp_db("fts5");
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        run(
+            &worker,
+            "CREATE VIRTUAL TABLE docs USING fts5(body)",
+            vec![],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "INSERT INTO docs(rowid, body) VALUES (?, ?)",
+            vec![SqlValue::Integer(1), SqlValue::Text("red apple".into())],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "INSERT INTO docs(rowid, body) VALUES (?, ?)",
+            vec![SqlValue::Integer(2), SqlValue::Text("green leaf".into())],
+        )
+        .unwrap();
+        let response = run(
+            &worker,
+            "SELECT rowid, body FROM docs WHERE docs MATCH ?",
+            vec![SqlValue::Text("apple".into())],
+        )
+        .unwrap();
+        assert_eq!(
+            response.statements[0].rows,
+            vec![vec![
+                SqlValue::Integer(1),
+                SqlValue::Text("red apple".into())
+            ]]
+        );
+    }
+
+    #[test]
+    fn json_vector_scan_returns_distance_and_text() {
+        let path = temp_db("vector");
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        run(
+            &worker,
+            "CREATE TABLE notes (
+                id INTEGER PRIMARY KEY,
+                body TEXT NOT NULL,
+                embedding TEXT NOT NULL
+            )",
+            vec![],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "INSERT INTO notes (id, body, embedding) VALUES (?, ?, ?)",
+            vec![
+                SqlValue::Integer(1),
+                SqlValue::Text("red apple".into()),
+                SqlValue::Text("[1,0,0]".into()),
+            ],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "INSERT INTO notes (id, body, embedding) VALUES (?, ?, ?)",
+            vec![
+                SqlValue::Integer(2),
+                SqlValue::Text("green leaf".into()),
+                SqlValue::Text("[0,1,0]".into()),
+            ],
+        )
+        .unwrap();
+        let response = run(
+            &worker,
+            "SELECT body, (
+                SELECT sum((a.value - b.value) * (a.value - b.value))
+                FROM json_each(notes.embedding) AS a
+                JOIN json_each(?) AS b ON a.key = b.key
+             ) AS distance
+             FROM notes
+             ORDER BY distance, id",
+            vec![SqlValue::Text("[1,0,0]".into())],
+        )
+        .unwrap();
+        let rows = &response.statements[0].rows;
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(rows[0][0], SqlValue::Text("red apple".into()));
+        assert_eq!(rows[1][0], SqlValue::Text("green leaf".into()));
+        assert!(is_zero(&rows[0][1]), "{rows:?}");
+        assert!(is_two(&rows[1][1]), "{rows:?}");
+    }
+
+    #[test]
+    fn vec0_match_returns_row_id_distance_and_text() {
+        let path = temp_db("vec0");
+        let worker = SqliteWorker::open(&path, 4, "LOC").unwrap();
+        run(
+            &worker,
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
+            vec![],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "CREATE VIRTUAL TABLE notes_vec USING vec0(embedding float[3])",
+            vec![],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "INSERT INTO notes (id, body) VALUES (1, 'red apple')",
+            vec![],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "INSERT INTO notes_vec (rowid, embedding) VALUES (1, '[1,0,0]')",
+            vec![],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "INSERT INTO notes (id, body) VALUES (2, 'green leaf')",
+            vec![],
+        )
+        .unwrap();
+        run(
+            &worker,
+            "INSERT INTO notes_vec (rowid, embedding) VALUES (2, '[0,1,0]')",
+            vec![],
+        )
+        .unwrap();
+        let response = run(
+            &worker,
+            "SELECT notes.id, notes.body, notes_vec.distance
+             FROM notes_vec
+             JOIN notes ON notes.id = notes_vec.rowid
+             WHERE notes_vec.embedding MATCH ?
+               AND k = 2
+             ORDER BY notes_vec.distance",
+            vec![SqlValue::Text("[1,0,0]".into())],
+        )
+        .unwrap();
+        let rows = &response.statements[0].rows;
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(rows[0][0], SqlValue::Integer(1));
+        assert_eq!(rows[0][1], SqlValue::Text("red apple".into()));
+        assert!(is_zero(&rows[0][2]), "{rows:?}");
+        assert_eq!(rows[1][0], SqlValue::Integer(2));
+        assert_eq!(rows[1][1], SqlValue::Text("green leaf".into()));
+        assert!(!is_zero(&rows[1][2]), "{rows:?}");
+    }
+
+    fn is_zero(value: &SqlValue) -> bool {
+        match value {
+            SqlValue::Integer(0) => true,
+            SqlValue::Real(real) => *real == 0.0,
+            _ => false,
+        }
+    }
+
+    fn is_two(value: &SqlValue) -> bool {
+        match value {
+            SqlValue::Integer(2) => true,
+            SqlValue::Real(real) => *real == 2.0,
+            _ => false,
+        }
     }
 }

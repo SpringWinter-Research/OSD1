@@ -486,6 +486,158 @@ async fn restored_file_bootstraps_a_new_cluster_and_commits_again() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn fts5_match_replays_on_the_follower() {
+    let secret = "cluster-secret";
+    let token = "raft-token";
+    let root = std::env::temp_dir().join(format!(
+        "osd1-raft-fts-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let leader = node(&root, 1, secret, token, true, None).await;
+    let follower = node(
+        &root,
+        2,
+        secret,
+        token,
+        false,
+        Some(leader.raft_addr.to_string()),
+    )
+    .await;
+
+    let (status, body) = post(
+        leader.http_addr,
+        token,
+        "CREATE VIRTUAL TABLE docs USING fts5(body)",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let (status, body) = post(
+        leader.http_addr,
+        token,
+        "INSERT INTO docs(rowid, body) VALUES (?, ?)",
+        Some(json!([1, "red apple"])),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut last = String::new();
+    let mut seen = None;
+    while Instant::now() < deadline {
+        let (status, body) = post(
+            follower.http_addr,
+            token,
+            "SELECT body FROM docs WHERE docs MATCH ?",
+            Some(json!(["apple"])),
+        )
+        .await;
+        last = body.to_string();
+        if status == 200 && body["result"][0]["results"][0]["body"] == json!("red apple") {
+            seen = Some(body);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let seen = seen.unwrap_or_else(|| panic!("match did not replay: {last}"));
+    assert_eq!(
+        seen["result"][0]["meta"]["served_by_primary"],
+        json!(false),
+        "{seen}"
+    );
+    let (status, clock) = post(leader.http_addr, token, "SELECT datetime('now')", None).await;
+    assert_eq!(status, 400, "{clock}");
+    assert!(
+        clock["errors"][0]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("nondeterministic"),
+        "{clock}"
+    );
+
+    leader.close().await;
+    follower.close().await;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn vec0_match_replays_on_the_follower() {
+    let secret = "cluster-secret";
+    let token = "raft-token";
+    let root = std::env::temp_dir().join(format!(
+        "osd1-raft-vec-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let leader = node(&root, 1, secret, token, true, None).await;
+    let follower = node(
+        &root,
+        2,
+        secret,
+        token,
+        false,
+        Some(leader.raft_addr.to_string()),
+    )
+    .await;
+
+    for sql in [
+        "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)",
+        "CREATE VIRTUAL TABLE notes_vec USING vec0(embedding float[3])",
+        "INSERT INTO notes (id, body) VALUES (1, 'red apple')",
+        "INSERT INTO notes_vec (rowid, embedding) VALUES (1, '[1,0,0]')",
+    ] {
+        let (status, body) = post(leader.http_addr, token, sql, None).await;
+        assert_eq!(status, 200, "{sql}: {body}");
+    }
+
+    let query = "SELECT notes.id, notes.body, notes_vec.distance
+         FROM notes_vec
+         JOIN notes ON notes.id = notes_vec.rowid
+         WHERE notes_vec.embedding MATCH ?
+           AND k = 1
+         ORDER BY notes_vec.distance";
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut last = String::new();
+    let mut seen = None;
+    while Instant::now() < deadline {
+        let (status, body) = post(follower.http_addr, token, query, Some(json!(["[1,0,0]"]))).await;
+        last = body.to_string();
+        if status == 200
+            && body["result"][0]["results"][0]["id"] == json!(1)
+            && body["result"][0]["results"][0]["body"] == json!("red apple")
+        {
+            seen = Some(body);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let seen = seen.unwrap_or_else(|| panic!("vector match did not replay: {last}"));
+    assert_eq!(
+        seen["result"][0]["meta"]["served_by_primary"],
+        json!(false),
+        "{seen}"
+    );
+    let distance = &seen["result"][0]["results"][0]["distance"];
+    assert!(
+        distance.as_i64() == Some(0) || distance.as_f64() == Some(0.0),
+        "{seen}"
+    );
+
+    leader.close().await;
+    follower.close().await;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 fn copy_database(from: &std::path::Path, to: &std::path::Path) {
     std::fs::create_dir_all(to.parent().expect("parent")).expect("mkdir");
     std::fs::copy(from, to).unwrap_or_else(|error| panic!("copy {from:?}: {error}"));

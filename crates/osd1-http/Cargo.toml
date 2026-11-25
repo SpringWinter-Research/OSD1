@@ -11,7 +11,7 @@ axum = { workspace = true }
 prometheus = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["io-util"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

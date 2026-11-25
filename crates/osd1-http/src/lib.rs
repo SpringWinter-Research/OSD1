@@ -1,5 +1,6 @@
-//! D1 REST `/query` and `/raw` HTTP adapter, plus the table explorer page.
+//! D1 REST `/query` and `/raw` HTTP adapter, the MCP endpoint, and the table explorer page.
 
+mod mcp;
 mod metrics;
 
 use std::collections::HashMap;
@@ -63,11 +64,13 @@ impl AppState {
 }
 
 /// Routes `GET /`, `GET /explorer`, `GET /health`, `GET /metrics`,
-/// `POST /accounts/{account_id}/d1/database/{database_id}/query`, and the matching `/raw` route.
+/// `POST /mcp`, `POST /accounts/{account_id}/d1/database/{database_id}/query`,
+/// and the matching `/raw` route.
 ///
 /// `/`, `/explorer`, `/health`, and `/metrics` do not enqueue and do not use the bearer token.
 /// Path ids are ignored unless `local_database_id` or `routes` is set.
 /// The explorer page calls `/raw` with the token.
+/// `POST /mcp` is the Model Context Protocol endpoint. It uses the same token and the same queue.
 pub fn router(state: AppState) -> Router {
     let max_body_bytes = state.max_body_bytes;
     let metrics = state.metrics.clone();
@@ -76,6 +79,12 @@ pub fn router(state: AppState) -> Router {
         .route("/explorer", get(explorer))
         .route("/health", get(health))
         .route("/metrics", get(metrics_endpoint))
+        .route(
+            "/mcp",
+            post(mcp::post)
+                .get(mcp::method_not_allowed)
+                .delete(mcp::method_not_allowed),
+        )
         .route(
             "/accounts/{account_id}/d1/database/{database_id}/query",
             post(query),
@@ -360,22 +369,27 @@ async fn handle(
     body: &[u8],
     shape: ResultShape,
 ) -> Response {
+    let request = match parse_request(body, shape) {
+        Ok(request) => request,
+        Err(response) => return *response,
+    };
+    execute_local(state, headers, request).await
+}
+
+async fn execute_local(state: &AppState, headers: &HeaderMap, mut request: SqlRequest) -> Response {
     if state.draining.load(Ordering::Relaxed) {
         return leaving();
     }
     if let Err(response) = authorize(state, headers) {
         return *response;
     }
-    let mut request = match parse_request(body, shape) {
-        Ok(request) => request,
-        Err(response) => return *response,
-    };
     if let Some(limit) = state.request_timeout {
         request.deadline = Some(Instant::now() + limit);
     }
     if let Err(response) = apply_min_commit_index(&mut request, headers) {
         return *response;
     }
+    let shape = request.shape;
     match state.executor.enqueue(request) {
         EnqueueResult::Accepted(receiver) => wait_for_sql(state, receiver, shape).await,
         EnqueueResult::Full => {
@@ -1500,5 +1514,532 @@ mod tests {
             Some("false")
         );
         assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    fn rpc(method: &str, params: Value) -> String {
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params,
+        })
+        .to_string()
+    }
+
+    fn tool_call(name: &str, arguments: Value) -> String {
+        rpc(
+            "tools/call",
+            json!({ "name": name, "arguments": arguments }),
+        )
+    }
+
+    fn modern_request(
+        method: &'static str,
+        params: Value,
+        tool: Option<&'static str>,
+    ) -> Request<Body> {
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": method,
+            "params": params,
+            "_meta": { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        });
+        let mut request = post("/mcp", None, &body.to_string());
+        let headers = request.headers_mut();
+        headers.insert(
+            "mcp-protocol-version",
+            HeaderValue::from_static("2026-07-28"),
+        );
+        headers.insert("mcp-method", HeaderValue::from_static(method));
+        if let Some(tool) = tool {
+            headers.insert("mcp-name", HeaderValue::from_static(tool));
+        }
+        request
+    }
+
+    #[tokio::test]
+    async fn mcp_initialize_echoes_a_supported_legacy_version() {
+        let (fake, app) = app(Outcome::Panic, None);
+        let (status, _, body) = dispatch(
+            app.clone(),
+            post(
+                "/mcp",
+                None,
+                &rpc(
+                    "initialize",
+                    json!({
+                        "protocolVersion": "2025-11-25",
+                        "capabilities": {},
+                        "clientInfo": { "name": "test", "version": "0" }
+                    }),
+                ),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["result"]["protocolVersion"], json!("2025-11-25"));
+        assert_eq!(
+            body["result"]["capabilities"]["tools"]["listChanged"],
+            json!(false)
+        );
+        assert_eq!(body["result"]["serverInfo"]["name"], json!("osd1"));
+        assert_eq!(body["result"]["serverInfo"]["version"], json!("0.1.0"));
+        assert_eq!(body["id"], json!(1));
+
+        let (status, _, body) = dispatch(
+            app,
+            post(
+                "/mcp",
+                None,
+                &rpc("initialize", json!({ "protocolVersion": "2026-07-28" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["result"]["protocolVersion"], json!("2025-11-25"));
+        assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_initialized_notification_is_empty() {
+        let (fake, app) = app(Outcome::Panic, None);
+        let response = app
+            .oneshot(post(
+                "/mcp",
+                None,
+                r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+            ))
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(bytes.is_empty());
+        assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_lists_the_sql_tools() {
+        let (fake, app) = app(Outcome::Panic, None);
+        let (status, _, body) = dispatch(
+            app.clone(),
+            post("/mcp", None, &rpc("tools/list", json!({}))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let names: Vec<&str> = body["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "query",
+                "list_tables",
+                "describe_table",
+                "create_table",
+                "alter_table",
+                "drop_table"
+            ]
+        );
+        assert!(body["result"]["tools"][0].get("annotations").is_none());
+        assert_eq!(
+            body["result"]["tools"][1]["annotations"]["readOnlyHint"],
+            json!(true)
+        );
+        assert_eq!(
+            body["result"]["tools"][2]["annotations"]["readOnlyHint"],
+            json!(true)
+        );
+        assert_eq!(
+            body["result"]["tools"][5]["annotations"]["destructiveHint"],
+            json!(true)
+        );
+        assert!(body["result"].get("resultType").is_none());
+
+        let (status, _, body) = dispatch(
+            app,
+            post(
+                "/mcp",
+                None,
+                &rpc("tools/list", json!({ "cursor": "next" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["error"]["code"], json!(-32602));
+        assert_eq!(body["error"]["message"], json!("unknown cursor"));
+        assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_query_returns_the_envelope_text() {
+        let (fake, app) = app(ready_ok(vec![statement("n", 1)]), None);
+        let (status, _, body) = dispatch(
+            app,
+            post(
+                "/mcp",
+                None,
+                &tool_call(
+                    "query",
+                    json!({ "sql": "SELECT 1 AS n", "params": ["a", 2] }),
+                ),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["result"]["isError"], json!(false));
+        let text = body["result"]["content"][0]["text"].as_str().unwrap();
+        let envelope: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(envelope["success"], json!(true));
+        assert_eq!(envelope["result"][0]["results"], json!([{ "n": 1 }]));
+        assert_eq!(
+            body["result"]["structuredContent"]["result"][0]["results"],
+            json!([{ "n": 1 }])
+        );
+        let recorded = fake.requests.lock().unwrap();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].sql, "SELECT 1 AS n");
+        assert_eq!(recorded[0].shape, ResultShape::Objects);
+        assert_eq!(
+            recorded[0].params,
+            vec![SqlValue::Text("a".to_string()), SqlValue::Integer(2)]
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_create_alter_and_drop_enqueue_the_statement() {
+        let (fake, app) = app(ready_ok(vec![]), None);
+        let (status, _, body) = dispatch(
+            app.clone(),
+            post(
+                "/mcp",
+                None,
+                &tool_call(
+                    "create_table",
+                    json!({
+                        "name": "items",
+                        "columns": [
+                            { "name": "id", "type": "INTEGER", "primary_key": true },
+                            { "name": "name", "type": "TEXT", "not_null": true }
+                        ]
+                    }),
+                ),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["result"]["isError"], json!(false));
+
+        let (status, _, body) = dispatch(
+            app.clone(),
+            post(
+                "/mcp",
+                None,
+                &tool_call(
+                    "alter_table",
+                    json!({ "name": "notes", "action": "drop_column", "column": "extra" }),
+                ),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+
+        let (status, _, _) = dispatch(
+            app.clone(),
+            post(
+                "/mcp",
+                None,
+                &tool_call("drop_table", json!({ "name": "notes" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, _, _) = dispatch(
+            app,
+            post("/mcp", None, &tool_call("list_tables", json!({}))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let recorded = fake.requests.lock().unwrap();
+        assert_eq!(
+            recorded[0].sql,
+            "CREATE TABLE \"items\" (\"id\" INTEGER PRIMARY KEY, \"name\" TEXT NOT NULL)"
+        );
+        assert_eq!(
+            recorded[1].sql,
+            "ALTER TABLE \"notes\" DROP COLUMN \"extra\""
+        );
+        assert_eq!(recorded[2].sql, "DROP TABLE \"notes\"");
+        assert_eq!(
+            recorded[3].sql,
+            "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' AND name != 'osd1_applied' ORDER BY name"
+        );
+        assert!(recorded.iter().all(|request| request.params.is_empty()));
+    }
+
+    #[tokio::test]
+    async fn mcp_describe_table_binds_the_name() {
+        let (fake, app) = app(ready_ok(vec![]), None);
+        let (status, _, body) = dispatch(
+            app,
+            post(
+                "/mcp",
+                None,
+                &tool_call("describe_table", json!({ "name": "items" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["result"]["isError"], json!(false));
+        let recorded = fake.requests.lock().unwrap();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(
+            recorded[0].sql,
+            "SELECT type, name, sql FROM sqlite_master WHERE name = ?1 AND type IN ('table', 'view');\nSELECT cid, name, type, \"notnull\", dflt_value, pk FROM pragma_table_info(?1) ORDER BY cid;\nSELECT name, \"unique\", origin, partial FROM pragma_index_list(?1) ORDER BY seq"
+        );
+        assert_eq!(
+            recorded[0].params,
+            vec![SqlValue::Text("items".to_string())]
+        );
+        assert_eq!(recorded[0].shape, ResultShape::Objects);
+    }
+
+    #[tokio::test]
+    async fn mcp_rejects_a_bad_name_before_sql() {
+        let (fake, app) = app(Outcome::Panic, None);
+        for body in [
+            tool_call("drop_table", json!({ "name": "items-1" })),
+            tool_call("drop_table", json!({ "name": "osd1_applied" })),
+            tool_call("describe_table", json!({ "name": "osd1_applied" })),
+            tool_call("describe_table", json!({ "name": "items-1" })),
+            tool_call(
+                "create_table",
+                json!({ "name": "osd1_applied", "columns": [] }),
+            ),
+            tool_call("nope", json!({})),
+        ] {
+            let (status, _, response) = dispatch(app.clone(), post("/mcp", None, &body)).await;
+            assert_eq!(status, StatusCode::OK, "{response}");
+            assert_eq!(response["error"]["code"], json!(-32602), "{response}");
+        }
+        assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_missing_token_is_unauthorized() {
+        let (fake, app) = app(Outcome::Panic, Some("test-token"));
+        let (status, _, body) = dispatch(
+            app,
+            post(
+                "/mcp",
+                None,
+                &tool_call("query", json!({ "sql": "SELECT 1" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_failure(&body, 10000, "unauthorized");
+        assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_sql_error_is_a_tool_error() {
+        let (_fake, app) = app(
+            ready_err(SqlError::Sqlite {
+                code: 1,
+                message: "near \"NOPE\": syntax error".to_string(),
+            }),
+            None,
+        );
+        let (status, _, body) = dispatch(
+            app,
+            post("/mcp", None, &tool_call("query", json!({ "sql": "NOPE" }))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["result"]["isError"], json!(true));
+        assert_eq!(
+            body["result"]["content"][0]["text"],
+            json!("sqlite error 1: near \"NOPE\": syntax error")
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_full_queue_is_a_tool_error() {
+        let (_fake, app) = app(Outcome::Full, None);
+        let (status, _, body) = dispatch(
+            app,
+            post(
+                "/mcp",
+                None,
+                &tool_call("query", json!({ "sql": "SELECT 1" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["result"]["isError"], json!(true));
+        assert_eq!(
+            body["result"]["content"][0]["text"],
+            json!("sql queue is full")
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_get_is_not_allowed() {
+        let (_fake, app) = app(Outcome::Panic, None);
+        let response = app
+            .oneshot(Request::builder().uri("/mcp").body(Body::empty()).unwrap())
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ALLOW)
+                .and_then(|value| value.to_str().ok()),
+            Some("POST")
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_discover_and_modern_call_use_the_same_queue() {
+        let (fake, app) = app(ready_ok(vec![statement("n", 1)]), None);
+        let (status, _, body) = dispatch(
+            app.clone(),
+            modern_request("server/discover", json!({}), None),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["id"], json!(7));
+        assert_eq!(body["result"]["resultType"], json!("complete"));
+        assert_eq!(body["result"]["cacheScope"], json!("public"));
+        assert_eq!(body["result"]["ttlMs"], json!(3_600_000));
+        assert_eq!(body["result"]["capabilities"]["tools"], json!({}));
+        assert_eq!(
+            body["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+            json!("osd1")
+        );
+        let versions = body["result"]["supportedVersions"].as_array().unwrap();
+        assert!(versions.iter().any(|version| version == "2026-07-28"));
+        assert!(versions.iter().any(|version| version == "2025-11-25"));
+
+        let (status, _, body) =
+            dispatch(app.clone(), modern_request("tools/list", json!({}), None)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["result"]["resultType"], json!("complete"));
+        assert_eq!(body["result"]["tools"][0]["name"], json!("query"));
+
+        let (status, _, body) = dispatch(
+            app,
+            modern_request(
+                "tools/call",
+                json!({
+                    "name": "query",
+                    "arguments": { "sql": "SELECT 1 AS n" }
+                }),
+                Some("query"),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["result"]["isError"], json!(false));
+        assert_eq!(fake.requests.lock().unwrap().len(), 1);
+        assert_eq!(fake.requests.lock().unwrap()[0].sql, "SELECT 1 AS n");
+    }
+
+    #[tokio::test]
+    async fn mcp_on_a_router_does_not_enqueue() {
+        let fake = Arc::new(Fake {
+            requests: Mutex::new(Vec::new()),
+            outcome: Outcome::Panic,
+        });
+        let executor: Arc<dyn SqlExecutor> = fake.clone();
+        let mut state = AppState::new(executor, None);
+        state
+            .routes
+            .insert("other".to_string(), "http://127.0.0.1:9".to_string());
+        let app = router(state);
+        let (status, _, body) = dispatch(
+            app.clone(),
+            post(
+                "/mcp",
+                None,
+                &rpc("initialize", json!({ "protocolVersion": "2025-11-25" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["result"]["protocolVersion"], json!("2025-11-25"));
+
+        let (status, _, body) = dispatch(
+            app,
+            post(
+                "/mcp",
+                None,
+                &tool_call("query", json!({ "sql": "SELECT 1" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["result"]["isError"], json!(true));
+        assert_eq!(
+            body["result"]["content"][0]["text"],
+            json!("the router does not execute SQL")
+        );
+        assert!(fake.requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_http_metric_is_mcp_and_sql_metric_stays_query() {
+        let (_fake, app) = app(ready_ok(vec![statement("n", 1)]), None);
+        let (status, _, _) = dispatch(
+            app.clone(),
+            post(
+                "/mcp",
+                None,
+                &tool_call("query", json!({ "sql": "SELECT 1" })),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .expect("metrics");
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("osd1_http_requests_total{route=\"mcp\",status=\"200\"} 1"));
+        assert!(text.contains("osd1_sql_requests_total{result=\"ok\",route=\"query\"} 1"));
+        assert!(!text.contains("SELECT 1"));
+    }
+
+    #[tokio::test]
+    async fn mcp_draining_rejects_before_sql() {
+        let fake = Arc::new(Fake {
+            requests: Mutex::new(Vec::new()),
+            outcome: Outcome::Panic,
+        });
+        let executor: Arc<dyn SqlExecutor> = fake.clone();
+        let state = AppState::new(executor, Some("secret".to_string()));
+        state.draining.store(true, Ordering::Relaxed);
+        let app = router(state);
+        let (status, _, body) = dispatch(
+            app,
+            post("/mcp", Some("Bearer secret"), &rpc("initialize", json!({}))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["errors"][0]["message"], "node is leaving the cluster");
+        assert!(fake.requests.lock().unwrap().is_empty());
     }
 }

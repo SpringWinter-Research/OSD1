@@ -17,13 +17,15 @@ Applications already send the D1 request shape. They need one place that runs th
 
 ## How a request works
 
-1. The client sends `POST /query` or `POST /raw`.
+1. The client sends `POST /query`, `POST /raw`, or `POST /mcp`.
 2. OSD1 checks the bearer token when a token is set.
-3. The request waits on a bounded queue. A full queue returns HTTP 429.
+3. A SQL call waits on a bounded queue. A full queue returns HTTP 429.
 4. In simple mode, the SQL thread runs the statements in one transaction.
 5. In raft mode, a write gets a new command id. OSD1 stores that id before it proposes the command.
 6. A majority of the voters must store the log entry. Then the SQL thread applies the pair `(origin node, command id)` once.
 7. A follower serves a local read from its own file. It forwards a write to the leader and returns the normal HTTP 200 envelope.
+
+`POST /mcp` calls the same queue. A tool builds `CREATE`, `ALTER`, or `DROP`, reads one table's columns, or passes SQL through. A SQL failure stays inside HTTP 200 and sets `isError` to true. A missing token stays HTTP 401. A node that is leaving stays HTTP 503.
 
 Simple mode never opens a raft log. Raft mode starts only when you set `OSD1_NODE_ID`, `OSD1_RAFT_LISTEN`, and `OSD1_RAFT_SECRET`. A running process does not change mode.
 
@@ -41,7 +43,7 @@ Litestream is a sidecar. It copies the leader file. It does not vote, and it doe
 
 ## Access
 
-Set `OSD1_API_TOKEN` when `/query` and `/raw` must require a bearer token. The match is exact. A missing token is HTTP 401. A wrong token is HTTP 401. OSD1 does not queue those requests. The startup log replaces the token with `[redacted]`.
+Set `OSD1_API_TOKEN` when `/query`, `/raw`, and `/mcp` must require a bearer token. The match is exact. A missing token is HTTP 401. A wrong token is HTTP 401. OSD1 does not queue those requests. The startup log replaces the token with `[redacted]`.
 
 `/health`, `/metrics`, `/`, and `/explorer` do not check the token. The explorer stores the token in browser storage. The page sends the token only on `/raw`.
 

@@ -7,6 +7,8 @@ description: Recorded OSD1 runs on an Apple M4, and a same-SQL comparison with S
 
 These runs are on an Apple M4. A release build serves the HTTP rates. Read each table as one question. Do not rank a different client count, a different statement, or a different engine on the same axis.
 
+Tests that are not run yet are on the [benchmark plans](benchmark-plans.md) page.
+
 ## SELECT 1, many clients
 
 A release build serves `SELECT 1` over keep-alive HTTP on the loopback interface. One client does 25,467 requests each second. Eight clients do 82,129. Sixteen clients do 102,234. Thirty-two clients do 111,075. The rate stops rising at 32 clients. The SQL thread is full. 111,075 is the highest recorded rate in simple mode.

@@ -26,6 +26,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signa
 axum = "0.8"
 prometheus = "0.13"
 rusqlite = { version = "0.32", features = ["bundled"] }
+# Pinned. sqlite-vec is pre-v1. 0.1.9 is the entry point compiled into the one connection.
+sqlite-vec = "=0.1.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # 0.9 is the stable line. 0.10 is alpha. `serde` serializes log entries.

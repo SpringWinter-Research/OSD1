@@ -183,6 +183,15 @@ Apple M4, 6 Nov 2026, release build, loopback. `SELECT 1` over keep-alive HTTP. 
 
 On the same machine, SQLite with no HTTP did 2,516,325 in-memory transactions/s, 543,065 WAL transactions/s with `synchronous=FULL`, and 3,447,361 indexed reads/s inside one transaction.
 
+A later run, 25 Nov 2026, kept the SQL the same and changed one thing: in-process SQLite 3.46.0 versus OSD1 over one keep-alive connection. Indexed point select, one transaction per call, one client, 2,000 calls.
+
+| Engine | p50 | Calls/s |
+| --- | ---: | ---: |
+| SQLite, in process | 0.002 ms | 414,450 |
+| OSD1 HTTP | 0.033 ms | 27,513 |
+
+The setup, the `SELECT 1` pair, and the raw output are on the [benchmark](benchmark.md#same-sql-one-client) page. That run does not change the 111,075 ceiling above. It is not a full-text result from another site’s Hacker News suite.
+
 A single Python client against four workloads (2,000 calls each, 4,000 indexed rows loaded):
 
 {% include latency-chart.html %}
